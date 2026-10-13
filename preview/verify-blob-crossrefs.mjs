@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const upload = join(root, "dist", "upload");
@@ -213,7 +213,7 @@ function auditBuiltBlobs() {
       continue;
     }
     try {
-      execSync(`node --check "${path}"`, { stdio: "pipe" });
+      execFileSync(process.execPath, ["--check", path], { stdio: "pipe" });
       ok(`${name} syntax valid`);
     } catch (e) {
       fail(`${name} syntax error: ${e.stderr?.toString().trim() || e.message}`);

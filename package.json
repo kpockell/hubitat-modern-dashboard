@@ -12,8 +12,12 @@
   },
   "homepage": "https://github.com/evdev/hubitat-modern-dashboard#readme",
   "scripts": {
-    "test": "node --test test/app-config.test.mjs test/app-devices.test.mjs test/app-favorites.test.mjs test/app-preferences.test.mjs test/app-thermostats-api.test.mjs test/favorite-reorder.test.mjs test/sar-import.test.mjs test/scheduler-core.test.mjs test/scheduler-naming.test.mjs test/sensor-helpers.test.mjs",
-    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=src/app.js test/app-config.test.mjs test/app-devices.test.mjs test/app-favorites.test.mjs test/app-preferences.test.mjs test/app-thermostats-api.test.mjs test/favorite-reorder.test.mjs test/sar-import.test.mjs test/scheduler-core.test.mjs test/scheduler-naming.test.mjs test/sensor-helpers.test.mjs",
+    "test": "npm run test:unit",
+    "test:unit": "node --test \"test/**/*.test.mjs\"",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=src/app.js --test-coverage-lines=15 --test-coverage-branches=57 --test-coverage-functions=69 \"test/**/*.test.mjs\"",
+    "test:contracts": "npm run verify:blobs && npm run verify:blob-crossrefs && npm run verify:post3-boot && npm run verify:auth && npm run verify:pwa && npm run verify:scheduler-source",
+    "test:integration": "npm run verify:sensors && npm run verify:favorites && npm run verify:embeds && npm run verify:times && npm run verify:html && npm run verify:schedules && npm run verify:triggers",
+    "test:all": "npm run test:unit && npm run test:coverage && npm run build && npm run test:contracts && npm run test:integration",
     "build": "node build.mjs",
     "preview": "node preview/server.mjs",
     "verify:sensors": "node preview/verify-sensors.mjs",
@@ -34,6 +38,8 @@
     "verify:pwa": "node preview/verify-pwa-install.mjs"
   },
   "devDependencies": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "fflate": "^0.8.3",
+    "happy-dom": "^21.0.1"
   }
 }

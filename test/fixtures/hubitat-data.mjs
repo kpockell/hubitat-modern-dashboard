@@ -1,0 +1,42 @@
+export function hubitatData(overrides = {}) {
+  const base = {
+    config: {
+      pollIntervalMs: 5000,
+      useWebSocket: false,
+      dashboardName: "mDash",
+      defaultTab: "lights",
+      favorites: [],
+      favoriteSizes: {},
+      embedCards: [],
+      timeCards: [],
+      notificationCards: [],
+      favoritesLayout: [],
+    },
+    rooms: [{ id: 1, name: "Living Room" }],
+    devices: [{ i: 1, n: "Lamp", r: 1, d: 0, s: 0, l: 50, ct: 1, rgb: 0 }],
+    outlets: [],
+    thermostats: [],
+    tempSensors: [],
+    sensors: [],
+    valves: [],
+    locks: [],
+    garageDoors: [],
+    music: [],
+    cameras: [],
+    windowShades: [],
+    ceilingFans: [],
+    hubModes: ["Day", "Night"],
+    currentHubMode: "Day",
+    hsmEnabled: false,
+    schedulerEnabled: true,
+    dashboardPasswordRequired: false,
+    scenes: [],
+    schedules: [],
+    snapshots: {},
+  };
+  return {
+    ...base,
+    ...overrides,
+    config: { ...base.config, ...(overrides.config || {}) },
+  };
+}

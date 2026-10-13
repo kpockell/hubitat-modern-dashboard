@@ -43,7 +43,7 @@ Use **only** Hubitat platform `device.getStatus()`:
   ```
 - **`appendOfflineJson(out, d)`** called for every device type in `renderData()` and `renderDevice()` (lights, outlets, thermostats, temp sensors, sensors, locks, shades, valves, music). Omit `off` when online to keep payloads small.
 
-### Frontend (`src/app.js`)
+### Frontend (`src/client/legacy/`)
 
 - `cfg.showOfflineDevices` from `/data` config
 - `deviceIsOffline(dev)` → `cfg.showOfflineDevices && dev.off`

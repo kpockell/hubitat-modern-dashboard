@@ -3,6 +3,7 @@ import strictAssert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readClientSource, readClientChunks } from "../lib/client-source.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -34,7 +35,7 @@ function loadAutoScheduleName() {
 
 const autoScheduleName = loadAutoScheduleName();
 
-const appJs = readFileSync(join(root, "src/app.js"), "utf8");
+const appJs = readClientSource(root);
 test("scheduler UI delegates to generated-name helpers", () => {
 assert(
   appJs.includes("const fn = globalThis.autoScheduleName"),
@@ -299,11 +300,11 @@ assert(
 });
 
 function loadSchedActionDescription() {
-  const src = readFileSync(join(root, "src/app.js"), "utf8");
+  const src = readClientChunks(root).post3;
   const start = src.indexOf("  function schedIdList(");
-  if (start < 0) throw new Error("schedIdList missing from src/app.js");
+  if (start < 0) throw new Error("schedIdList missing from legacy post3 source");
   const end = src.indexOf("  function schedOnlyInModesList(");
-  if (end < 0) throw new Error("schedOnlyInModesList missing from src/app.js");
+  if (end < 0) throw new Error("schedOnlyInModesList missing from legacy post3 source");
   const fnSrc = src.slice(start, end);
   return new Function(`${fnSrc}\nreturn { schedIdList, schedActionDescription };`)();
 }

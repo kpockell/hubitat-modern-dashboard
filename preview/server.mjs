@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createServer } from "node:http";
 import { createIconPng } from "../lib/pwa-icons.mjs";
+import { readClientSource } from "../lib/client-source.mjs";
 import {
   WEEKLY_DAY_NAMES,
   scheduleCronForTrigger,
@@ -878,23 +879,23 @@ const server = createServer(async (req, res) => {
     res.writeHead(200, { "Content-Type": "application/javascript" });
     if (existsSync(join(distUpload, "mld-app.js"))) return res.end(readDist("mld-app.js"));
     // Fallback for unbuilt trees: constants + main IIFE in one response (matches production).
-    return res.end(read("src/app-pre.js") + "\n" + read("src/app.js"));
+    return res.end(read("src/app-pre.js") + "\n" + readClientSource(root));
   }
   if (p === "/app-core.js") {
     res.writeHead(200, { "Content-Type": "application/javascript" });
-    return res.end(readDist("mld-app-core.js"));
+    return res.end(existsSync(join(distUpload, "mld-app-core.js")) ? readDist("mld-app-core.js") : "");
   }
   if (p === "/app-post.js") {
     res.writeHead(200, { "Content-Type": "application/javascript" });
-    return res.end(readDist("mld-app-post.js"));
+    return res.end(existsSync(join(distUpload, "mld-app-post.js")) ? readDist("mld-app-post.js") : "");
   }
   if (p === "/app-post2.js") {
     res.writeHead(200, { "Content-Type": "application/javascript" });
-    return res.end(readDist("mld-app-post2.js"));
+    return res.end(existsSync(join(distUpload, "mld-app-post2.js")) ? readDist("mld-app-post2.js") : "");
   }
   if (p === "/app-post3.js") {
     res.writeHead(200, { "Content-Type": "application/javascript" });
-    return res.end(readDist("mld-app-post3.js"));
+    return res.end(existsSync(join(distUpload, "mld-app-post3.js")) ? readDist("mld-app-post3.js") : "");
   }
   if (p === "/manifest.webmanifest") {
     res.writeHead(200, { "Content-Type": "application/manifest+json" });

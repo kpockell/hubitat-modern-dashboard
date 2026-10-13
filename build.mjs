@@ -478,9 +478,9 @@ function assertUploadBlobLimits() {
 }
 
 /**
- * The boot chunk explicitly publishes stable object keys onto __MLD, so its
- * private lexical bindings can be shortened without changing later chunks.
- * Post chunks retain their legacy identifiers until explicit entries replace
+ * Selected chunks explicitly publish stable object keys onto __MLD, so their
+ * private lexical bindings can be shortened without changing consumers.
+ * Other post chunks retain legacy identifiers until explicit entries replace
  * the regex rewriter.
  */
 function minifyJs(label, source) {
@@ -488,7 +488,8 @@ function minifyJs(label, source) {
     loader: "js",
     minifyWhitespace: true,
     minifySyntax: true,
-    minifyIdentifiers: label === "mld-app.js",
+    minifyIdentifiers:
+      label === "mld-app.js" || label === "mld-app-core.js" || label === "mld-app-post2.js",
     legalComments: "none",
     target: ["es2018"],
   });
@@ -635,13 +636,19 @@ const appPre = readFileSync(join(root, "src", "app-pre.js"), "utf8").trimEnd();
 const domainBundle = bundleClientModule(
   join(root, "src", "client", "browser-entry.js")
 );
+const lifecycleBundle = bundleClientModule(
+  join(root, "src", "client", "transport", "lifecycle-browser-entry.js")
+);
+const httpBundle = bundleClientModule(
+  join(root, "src", "client", "transport", "http-browser-entry.js")
+);
 const part1Merged = `${appPre}\n${domainBundle}\n${part1Out}`;
 
 const jsOutputs = [
   ["mld-app.js", minifyJs("mld-app.js", part1Merged)],
-  ["mld-app-core.js", minifyJs("mld-app-core.js", partCoreOut)],
+  ["mld-app-core.js", minifyJs("mld-app-core.js", `${httpBundle}\n${partCoreOut}`)],
   ["mld-app-post.js", minifyJs("mld-app-post.js", part2Out)],
-  ["mld-app-post2.js", minifyJs("mld-app-post2.js", part3Out)],
+  ["mld-app-post2.js", minifyJs("mld-app-post2.js", `${lifecycleBundle}\n${part3Out}`)],
   ["mld-app-post3.js", minifyJs("mld-app-post3.js", part4Out)],
 ];
 

@@ -3028,45 +3028,6 @@
       setStatus("Cannot reach hub", true);
     }
   }
-  function effectivePollInterval() {
-    const base = Math.max(2000, cfg.pollIntervalMs || POLL_DEFAULT);
-    if (cfg.useWebSocket && wsConnected) return Math.max(base, POLL_WS_FALLBACK);
-    return base;
-  }
-
-  function startPolling() {
-    stopPolling();
-    pollTimer = setInterval(refresh, effectivePollInterval());
-  }
-
-  function restartPolling() {
-    if (!document.hidden && !reorderMode) startPolling();
-  }
-  function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
-
-  function clearWsReconnectTimer() {
-    if (wsReconnectTimer) {
-      clearTimeout(wsReconnectTimer);
-      wsReconnectTimer = null;
-    }
-  }
-
-  function stopWS() {
-    clearWsReconnectTimer();
-    wsConnected = false;
-    if (ws) {
-      try { ws.close(); } catch {}
-      ws = null;
-    }
-  }
-
-  function pauseApp() {
-    stopPolling();
-    stopWS();
-    postCall("stopAlertTone");
-    postCall("pauseTriggerCameraOverlay");
-  }
-
   function resetUiOnResume() {
     cancelAllSlideGestures();
     closeConfirm(false);
@@ -3074,34 +3035,9 @@
     if (colorSession) closeColorPopup(false);
   }
 
-  function syncApp() {
-    if (document.hidden) return;
-    if (isDashboardGateOpen()) return;
-    refresh();
-    if (!reorderMode) startPolling();
-    startWS();
-  }
-
-  function resumeApp() {
-    if (document.hidden) return;
-    resetUiOnResume();
-    syncApp();
-  }
-
-  // ---------- websocket (local only) ----------
-  function startWS() {
-    if (!cfg.useWebSocket) return;
-    if (ws) {
-      if (ws.readyState === WebSocket.OPEN) return;
-      try { ws.close(); } catch {}
-      ws = null;
-      wsConnected = false;
-    }
-    if (location.hostname === "cloud.hubitat.com" || location.protocol === "https:") return; // ws not available via cloud proxy
-    const wsUrl = "ws://" + location.host + "/eventsocket";
-    try { ws = new WebSocket(wsUrl); } catch { ws = null; return; }
-    ws.onopen = () => { wsRetry = 0; wsConnected = true; restartPolling(); };
-    ws.onmessage = (ev) => {
+  // Hubitat event application remains feature-specific; socket ownership and
+  // lifecycle are delegated to the injected transport controller below.
+  function handleWsMessage(ev) {
       try {
         const m = JSON.parse(ev.data);
         if (!m) return;
@@ -3287,25 +3223,42 @@
           return;
         }
       } catch {}
-    };
-    ws.onclose = () => {
-      ws = null;
-      wsConnected = false;
-      restartPolling();
-      if (!document.hidden) scheduleReconnect();
-    };
-    ws.onerror = () => { try { ws.close(); } catch {} };
   }
-  function scheduleReconnect() {
-    if (!cfg.useWebSocket || document.hidden) return;
-    wsRetry = Math.min(wsRetry + 1, 6);
-    const delay = Math.min(15000, 1000 * 2 ** wsRetry);
-    clearWsReconnectTimer();
-    wsReconnectTimer = setTimeout(() => {
-      wsReconnectTimer = null;
-      startWS();
-    }, delay);
-  }
+
+  const lifecycle = MLDLifecycle.createLifecycleController({
+    getConfig: () => cfg,
+    isHidden: () => document.hidden,
+    isGateOpen: isDashboardGateOpen,
+    isReorderActive: () => reorderMode,
+    location,
+    WebSocket,
+    refresh,
+    onSocketMessage: handleWsMessage,
+    onConnectionChange(connection) {
+      ws = connection.socket;
+      wsConnected = connection.connected;
+      wsRetry = connection.retry;
+      wsReconnectTimer = connection.reconnectTimer;
+    },
+    pauseEffects() {
+      postCall("stopAlertTone");
+      postCall("pauseTriggerCameraOverlay");
+    },
+    resumeUi: resetUiOnResume,
+    defaultPollMs: POLL_DEFAULT,
+    socketPollMs: POLL_WS_FALLBACK,
+  });
+
+  function effectivePollInterval() { return lifecycle.effectivePollInterval(); }
+  function startPolling() { return lifecycle.startPolling(); }
+  function restartPolling() { return lifecycle.restartPolling(); }
+  function stopPolling() { return lifecycle.stopPolling(); }
+  function stopWS() { return lifecycle.stopSocket(); }
+  function pauseApp() { return lifecycle.pause(); }
+  function syncApp() { return lifecycle.sync(); }
+  function resumeApp() { return lifecycle.resume(); }
+  function startWS() { return lifecycle.startSocket(); }
+  function scheduleReconnect() { return lifecycle.scheduleReconnect(); }
 
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {

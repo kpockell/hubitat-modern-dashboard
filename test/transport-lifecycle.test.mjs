@@ -42,7 +42,23 @@ test("session service loads, persists, expires, and appends OAuth/session tokens
   assert.strictEqual(storage.values.get("session"), "next");
   session.clear();
   assert.strictEqual(storage.values.has("session"), false);
+  assert.deepStrictEqual(session.state, { session: "", expiresAt: 0 });
+  assert.deepStrictEqual(session.applyResponse(null), { session: "", expiresAt: 0 });
+  assert.deepStrictEqual(session.applyResponse({ ok: true }), { session: "", expiresAt: 0 });
   assert.ok(changes.length >= 3);
+});
+
+test("session storage failures fail closed and token helpers work without OAuth", () => {
+  const brokenStorage = {
+    getItem() { throw new Error("blocked"); },
+    setItem() { throw new Error("blocked"); },
+    removeItem() { throw new Error("blocked"); },
+  };
+  const session = createSessionService({ storage: brokenStorage, now: () => 10 });
+  assert.deepStrictEqual(session.load(), { session: "", expiresAt: 0 });
+  assert.deepStrictEqual(session.save("value", "invalid"), { session: "value", expiresAt: 0 });
+  assert.strictEqual(session.withToken("data"), "data");
+  assert.strictEqual(session.withOAuthToken("sw.js?x=1"), "sw.js?x=1");
 });
 
 test("transport classifies timeout, network, HTTP, JSON, and auth failures", async () => {
@@ -64,6 +80,13 @@ test("transport classifies timeout, network, HTTP, JSON, and auth failures", asy
   await assert.rejects(transport.getJson("data"), (error) => error.code === "bad_json");
   fetchImpl = async () => ({ ok: false, status: 401, json: async () => ({}) });
   await assert.rejects(transport.getJson("data"), (error) => error.code === "auth_required");
+
+  fetchImpl = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ session: "renewed", expiresAt: Date.now() + 10_000 }),
+  });
+  assert.strictEqual((await transport.getJson("data")).session, "renewed");
 });
 
 test("commands cover success, rejection, partial failure, and network failure", async () => {
@@ -89,7 +112,53 @@ test("commands cover success, rejection, partial failure, and network failure", 
   assert.deepStrictEqual(await transport.sendBatch([{ id: 1, cmd: "on" }, { id: 2, cmd: "off" }]), {
     ok: false, failed: 2, total: 2,
   });
+  assert.deepStrictEqual(await transport.sendCommand(7, "on"), { ok: false });
+  assert.deepStrictEqual(await transport.sendBatch([]), { ok: true, failed: 0 });
+
+  response = { ok: true, status: 200, json: async () => ({ ok: true }) };
+  assert.deepStrictEqual(await transport.sendBatch([{ id: 1, cmd: "on", val: null }]), {
+    ok: true, failed: 0, total: 1,
+  });
+  response = { ok: false, status: 503, json: async () => { throw new Error("not json"); } };
+  assert.deepStrictEqual(await transport.sendBatch([{ id: 1, cmd: "on" }, { id: 2, cmd: "off" }]), {
+    ok: false, failed: 2, total: 2,
+  });
   assert.ok(flashes.length >= 3);
+});
+
+test("transport suppresses expected PIN failures and validates its session dependency", async () => {
+  assert.throws(() => createTransport(), /session service/);
+  const flashes = [];
+  const transport = createTransport({
+    fetch: async () => ({ ok: false, status: 403, json: async () => ({ error: "wrong pin" }) }),
+    session: createSessionService({ storage: memoryStorage() }),
+    flash: (...args) => flashes.push(args),
+  });
+  assert.deepStrictEqual(await transport.sendCommand(1, "unlock", null, "bad"), {
+    ok: false, status: 403, error: "wrong pin",
+  });
+  assert.deepStrictEqual(flashes, []);
+});
+
+test("fetch timeout aborts through injected timers and always clears the timer", async () => {
+  let timeout = null;
+  let cleared = false;
+  const transport = createTransport({
+    session: createSessionService({ storage: memoryStorage() }),
+    setTimeout(fn) { timeout = fn; return 9; },
+    clearTimeout(id) { assert.strictEqual(id, 9); cleared = true; },
+    fetch: async (_url, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => {
+        const error = new Error("aborted");
+        error.name = "AbortError";
+        reject(error);
+      });
+    }),
+  });
+  const pending = transport.fetchWithTimeout("data");
+  timeout();
+  await assert.rejects(pending, /aborted/);
+  assert.strictEqual(cleared, true);
 });
 
 test("lifecycle selects local WebSocket or cloud polling and cleans up", () => {
@@ -126,8 +195,12 @@ test("lifecycle selects local WebSocket or cloud polling and cleans up", () => {
   FakeSocket.last.readyState = FakeSocket.OPEN;
   FakeSocket.last.onopen();
   assert.strictEqual(lifecycle.connected, true);
+  assert.strictEqual(lifecycle.socket, FakeSocket.last);
+  assert.strictEqual(lifecycle.retry, 0);
   assert.strictEqual([...intervals.values()][0].delay, 45_000);
   FakeSocket.last.onmessage({ data: "event" });
+  FakeSocket.last.onerror();
+  assert.strictEqual(lifecycle.startSocket(), FakeSocket.last);
   FakeSocket.last.onclose();
   assert.strictEqual(lifecycle.connected, false);
   assert.ok([...timeouts.values()][0].delay >= 2_000);
@@ -147,4 +220,36 @@ test("lifecycle selects local WebSocket or cloud polling and cleans up", () => {
     refresh() {},
   });
   assert.strictEqual(cloud.startSocket(), null);
+});
+
+test("lifecycle covers guards, failed sockets, retry callbacks, and hidden resumes", () => {
+  let hidden = true;
+  let reorder = false;
+  let useWebSocket = false;
+  let timeoutCallback = null;
+  const lifecycle = createLifecycleController({
+    getConfig: () => ({ useWebSocket, pollIntervalMs: 9_000 }),
+    isHidden: () => hidden,
+    isReorderActive: () => reorder,
+    isGateOpen: () => false,
+    location: { hostname: "hub.local", protocol: "http:", host: "hub.local" },
+    WebSocket: class BrokenSocket { constructor() { throw new Error("no socket"); } },
+    refresh() {},
+    setTimeout(fn) { timeoutCallback = fn; return 1; },
+    clearTimeout() { timeoutCallback = null; },
+  });
+
+  assert.strictEqual(lifecycle.restartPolling(), null);
+  assert.strictEqual(lifecycle.scheduleReconnect(), null);
+  assert.strictEqual(lifecycle.sync(), false);
+  assert.strictEqual(lifecycle.resume(), false);
+  hidden = false;
+  reorder = true;
+  assert.strictEqual(lifecycle.restartPolling(), null);
+  useWebSocket = true;
+  assert.strictEqual(lifecycle.startSocket(), null);
+  lifecycle.scheduleReconnect();
+  assert.ok(timeoutCallback);
+  timeoutCallback();
+  lifecycle.stopSocket();
 });

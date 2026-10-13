@@ -175,6 +175,7 @@
     replaceCollection: replaceList,
     replaceRecord: replaceMap,
   } = MLDRuntime;
+  const { createSessionService } = MLDTransport;
 
   function applyHtmlTitleOverridesFromConfig(source, liveTitlesById = null) {
     const next = {};
@@ -1649,40 +1650,26 @@
 
   // ---------- Dashboard session + API (bootstrap) ----------
 
-  function loadDashSession() {
-    try {
-      dashSession = localStorage.getItem(DASH_SESSION_STORAGE_KEY) || "";
-      dashSessionExpiresAt = Number(localStorage.getItem(DASH_SESSION_EXPIRES_KEY)) || 0;
-    } catch {
-      dashSession = "";
-      dashSessionExpiresAt = 0;
-    }
-    publishMld({ dashSession: dashSession, dashSessionExpiresAt: dashSessionExpiresAt });
-  }
+  const ACCESS_TOKEN = (() => {
+    try { return new URLSearchParams(location.search).get("access_token") || ""; }
+    catch { return ""; }
+  })();
 
-  function saveDashSession(session, expiresAt) {
-    dashSession = String(session || "");
-    const exp = Number(expiresAt);
-    dashSessionExpiresAt = Number.isFinite(exp) && exp > 0 ? exp : 0;
-    try {
-      if (dashSession) {
-        localStorage.setItem(DASH_SESSION_STORAGE_KEY, dashSession);
-        localStorage.setItem(DASH_SESSION_EXPIRES_KEY, String(dashSessionExpiresAt));
-      } else {
-        localStorage.removeItem(DASH_SESSION_STORAGE_KEY);
-        localStorage.removeItem(DASH_SESSION_EXPIRES_KEY);
-      }
-    } catch {}
-    publishMld({ dashSession: dashSession, dashSessionExpiresAt: dashSessionExpiresAt });
-  }
-
-  function clearDashSession() {
-    saveDashSession("", 0);
-  }
-
-  function isDashSessionFresh() {
-    return !!dashSession && dashSessionExpiresAt > Date.now();
-  }
+  const sessionService = createSessionService({
+    storage: localStorage,
+    sessionKey: DASH_SESSION_STORAGE_KEY,
+    expiresKey: DASH_SESSION_EXPIRES_KEY,
+    accessToken: ACCESS_TOKEN,
+    onChange(state) {
+      dashSession = state.session;
+      dashSessionExpiresAt = state.expiresAt;
+      publishMld({ dashSession, dashSessionExpiresAt });
+    },
+  });
+  const loadDashSession = sessionService.load;
+  const saveDashSession = sessionService.save;
+  const clearDashSession = sessionService.clear;
+  const isDashSessionFresh = sessionService.isFresh;
 
   let dashSessionRenewInFlight = null;
   let dashSessionLastRenewAt = 0;
@@ -1727,13 +1714,7 @@
     renewDashSessionFromServer(false);
   }
 
-  function applyDashSessionFromResponse(data) {
-    if (!data) return;
-    const session = data.session || data.dashSession;
-    if (!session) return;
-    const expiresAt = data.expiresAt ?? data.dashSessionExpiresAt;
-    saveDashSession(session, expiresAt);
-  }
+  const applyDashSessionFromResponse = sessionService.applyResponse;
 
   function isDashboardGateOpen() {
     return !!document.querySelector(".dash-gate-popup.open");
@@ -1758,29 +1739,9 @@
 
 
   // ---------- API (OAuth: access_token required on every request, especially cloud) ----------
-  const ACCESS_TOKEN = (() => {
-    try { return new URLSearchParams(location.search).get("access_token") || ""; }
-    catch { return ""; }
-  })();
-
-  function withToken(path) {
-    if (!dashSession) loadDashSession();
-    const parts = [];
-    if (ACCESS_TOKEN) parts.push("access_token=" + encodeURIComponent(ACCESS_TOKEN));
-    if (dashSession && isDashSessionFresh()) {
-      parts.push("dash_session=" + encodeURIComponent(dashSession));
-    }
-    if (!parts.length) return path;
-    const sep = path.indexOf("?") >= 0 ? "&" : "?";
-    return path + sep + parts.join("&");
-  }
-
+  const withToken = sessionService.withToken;
   // Service worker script URL must stay stable (OAuth token only — never dash_session).
-  function withOAuthToken(path) {
-    if (!ACCESS_TOKEN) return path;
-    const sep = path.indexOf("?") >= 0 ? "&" : "?";
-    return path + sep + "access_token=" + encodeURIComponent(ACCESS_TOKEN);
-  }
+  const withOAuthToken = sessionService.withOAuthToken;
 
   function registerServiceWorkerForPwa() {
     if (location.protocol !== "https:" || !("serviceWorker" in navigator)) return;
@@ -1791,61 +1752,20 @@
   }
   registerServiceWorkerForPwa();
 
-  async function fetchWithTimeout(url, opts = {}, ms = 15000) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), ms);
-    try {
-      return await fetch(url, { ...opts, signal: ctrl.signal });
-    } finally {
-      clearTimeout(timer);
+  let transport = null;
+  function getTransport() {
+    if (!transport) {
+      transport = MLDTransport.createTransport({
+        fetch: (...args) => fetch(...args),
+        session: sessionService,
+        ensureAccess: () => postCall("ensureDashboardAccess"),
+        flash: (...args) => postCall("flash", ...args),
+      });
     }
+    return transport;
   }
-
-  async function getJson(url, authPass) {
-    const pass = authPass || 0;
-    let r;
-    try {
-      r = await fetchWithTimeout(withToken(url), { cache: "no-store", headers: { "Accept": "application/json" } });
-    } catch (e) {
-      if (e?.name === "AbortError") {
-        const err = new Error("timed out");
-        err.code = "timeout";
-        throw err;
-      }
-      const err = new Error(e?.message || "network error");
-      err.code = "network";
-      throw err;
-    }
-    if (r.status === 401) {
-      // First 401: reload any just-saved session and retry before prompting again.
-      // Clearing first caused a second password prompt when /data raced unlock.
-      if (pass === 0) {
-        loadDashSession();
-        if (isDashSessionFresh()) return getJson(url, 1);
-      }
-      clearDashSession();
-      await postCall("ensureDashboardAccess");
-      if (pass < 2) return getJson(url, pass + 1);
-      const err = new Error("auth required");
-      err.code = "auth_required";
-      throw err;
-    }
-    if (!r.ok) {
-      const err = new Error("HTTP " + r.status);
-      err.status = r.status;
-      throw err;
-    }
-    let data;
-    try {
-      data = await r.json();
-    } catch {
-      const err = new Error("invalid JSON (response may exceed Hubitat Cloud ~128 KB limit)");
-      err.code = "bad_json";
-      throw err;
-    }
-    applyDashSessionFromResponse(data);
-    return data;
-  }
+  function fetchWithTimeout(...args) { return getTransport().fetchWithTimeout(...args); }
+  function getJson(...args) { return getTransport().getJson(...args); }
 
   async function fetchData() {
     const d = await getJson("data");
@@ -1888,61 +1808,8 @@
     return d;
   }
 
-  async function sendCmd(id, cmd, val, pin) {
-    let url = "cmd?id=" + id + "&c=" + encodeURIComponent(cmd);
-    if (val != null) url += "&v=" + encodeURIComponent(val);
-    if (pin != null && pin !== "") url += "&pin=" + encodeURIComponent(pin);
-    try {
-      const r = await fetch(withToken(url), { cache: "no-store" });
-      if (!r.ok) {
-        let msg = "Command failed";
-        try {
-          const body = await r.json();
-          if (body?.error) msg = String(body.error);
-        } catch {}
-        if (r.status !== 403 && msg !== "wrong pin") postCall("flash", msg, true);
-        return { ok: false, status: r.status, error: msg };
-      }
-      return { ok: true };
-    } catch (e) { postCall("flash", "Command failed", true); return { ok: false }; }
-  }
-
-  async function sendCmdBatch(commands) {
-    if (!commands.length) return { ok: true, failed: 0 };
-    if (commands.length === 1) {
-      const c = commands[0];
-      const result = await sendCmd(c.id, c.cmd, c.val);
-      return { ok: result.ok, failed: result.ok ? 0 : 1, total: 1 };
-    }
-    try {
-      const body = {
-        commands: commands.map((c) => ({
-          id: c.id,
-          c: c.cmd,
-          v: c.val == null ? null : c.val,
-        })),
-      };
-      const r = await fetch(withToken("cmd/batch"), {
-        method: "POST",
-        cache: "no-store",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify(body),
-      });
-      let data = null;
-      try { data = await r.json(); } catch {}
-      if (!r.ok || !data) {
-        postCall("flash", "Command failed", true);
-        return { ok: false, failed: commands.length, total: commands.length };
-      }
-      if (data.failed > 0) {
-        postCall("flash", data.failed + " of " + data.total + " command(s) failed", true);
-      }
-      return data;
-    } catch (e) {
-      postCall("flash", "Command failed", true);
-      return { ok: false, failed: commands.length, total: commands.length };
-    }
-  }
+  function sendCmd(...args) { return getTransport().sendCommand(...args); }
+  function sendCmdBatch(...args) { return getTransport().sendBatch(...args); }
 
   function publishMld(patch) {
     const m = globalThis.__MLD;
@@ -1973,7 +1840,8 @@
 
   // Keep the legacy bindings and the temporary cross-chunk facade pointed at the
   // same collections while features migrate onto the controlled runtime store.
-  const runtime = createRuntime({ ui: { document } }, {
+  const transportFacade = { fetchWithTimeout, getJson, sendCommand: sendCmd, sendBatch: sendCmdBatch };
+  const runtime = createRuntime({ services: { session: sessionService, transport: transportFacade }, ui: { document } }, {
     cfg, rooms, devices, outlets, thermostats, tempSensors, sensors,
     hubModes, scenes, locks, garageDoors, windowShades, ceilingFans, valves, music, cameras,
     favorites, favoriteSizes, embedCards, timeCards, notificationCards, htmlTiles,

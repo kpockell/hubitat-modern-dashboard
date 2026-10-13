@@ -79,7 +79,7 @@ test("gesture registry cancels every active gesture despite self-removal", () =>
 });
 
 test("drag threshold uses Euclidean distance and supports a custom threshold", () => {
-  assert.strictEqual(dragThresholdExceeded(0, 0, 3, 4), false);
-  assert.strictEqual(dragThresholdExceeded(0, 0, 6, 6), true);
-  assert.strictEqual(dragThresholdExceeded(0, 0, 3, 4, 4), true);
+  assert.strictEqual(dragThresholdExceeded(3, 4), false);
+  assert.strictEqual(dragThresholdExceeded(6, 6), true);
+  assert.strictEqual(dragThresholdExceeded(3, 4, 4), true);
 });

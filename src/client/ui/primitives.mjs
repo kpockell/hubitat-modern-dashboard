@@ -78,9 +78,13 @@ export function createGestureRegistry() {
       };
     },
     cancelAll() {
-      while (active.length) active.shift()();
+      cancelGestures(active);
     },
   };
+}
+
+export function cancelGestures(active) {
+  while (active.length) active.shift()();
 }
 
 export function dragThresholdExceeded(deltaX, deltaY, threshold = 8) {

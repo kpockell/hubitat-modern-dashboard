@@ -1,6 +1,7 @@
 import {
   appendPopup,
   bindPopupDismiss,
+  cancelGestures,
   createElement,
   createGestureRegistry,
   createPopupController,
@@ -10,6 +11,7 @@ import {
 globalThis.MLDUI = {
   appendPopup,
   bindPopupDismiss,
+  cancelGestures,
   createElement,
   createGestureRegistry,
   createPopupController,

@@ -1433,27 +1433,10 @@
   }
 
   const activeSlideGestures = [];
-
-  function cancelAllSlideGestures() {
-    while (activeSlideGestures.length) activeSlideGestures[0]();
-  }
-
-  function appendPopup(el) {
-    document.documentElement.appendChild(el);
-  }
-
-  function bindPopupDismiss(overlay, panel, closeBtn, onClose) {
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) onClose();
-    });
-    if (panel) panel.addEventListener("click", (e) => e.stopPropagation());
-    if (closeBtn) {
-      closeBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        onClose();
-      });
-    }
-  }
+  const cancelAllSlideGestures = () => MLDUI.cancelGestures(activeSlideGestures);
+  const appendPopup = (element) => MLDUI.appendPopup(document, element);
+  const bindPopupDismiss = (...args) => MLDUI.bindPopupDismiss(...args);
+  const dragThresholdExceeded = (...args) => MLDUI.dragThresholdExceeded(...args);
 
   function supportedModes(t) {
     if (t?.supM == null) return TSTAT_DEFAULT_MODES;

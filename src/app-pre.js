@@ -1045,4 +1045,4 @@ function svgEl(name, attrs) {
 }
 
 const qs = (s, r = document) => r.querySelector(s);
-const ce = (t, c) => { const e = document.createElement(t); if (c) e.className = c; return e; };
+const ce = (t, c) => globalThis.MLDUI.createElement(document, t, c);

@@ -3,6 +3,7 @@ import { dirname, join } from "path";
 import vm from "vm";
 import { fileURLToPath } from "url";
 import * as favoriteDomain from "../src/client/domain/index.mjs";
+import * as clientRuntime from "../src/client/runtime/index.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const appPath = join(root, "src", "client", "legacy", "bootstrap.js");
@@ -38,6 +39,7 @@ const exposedFunctions = [
   "comfortFanValue", "fanModeActive", "tstatStateClass", "buildCentralTstat",
   "loadDashSession", "saveDashSession", "clearDashSession", "isDashSessionFresh",
   "withToken", "withOAuthToken", "getJson", "fetchData", "sendCmd", "sendCmdBatch", "replaceList",
+  "runtime", "registerFeature",
 ];
 
 export function plain(value) {
@@ -92,6 +94,7 @@ export function createAppHarness({ storage: initialStorage = {}, search = "" } =
       return favoriteDomain.isSameOriginEmbedUrl(url, sandbox.location);
     },
   };
+  sandbox.MLDRuntime = clientRuntime;
   const context = vm.createContext(sandbox);
 
   new vm.Script(readFileSync(prePath, "utf8"), { filename: prePath }).runInContext(context);

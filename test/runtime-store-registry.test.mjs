@@ -20,6 +20,14 @@ test("collection replacement preserves identity for arrays, maps, and sets", () 
   assert.deepStrictEqual([...map], [["next", 2]]);
   assert.strictEqual(replaceCollection(set, ["next"]), set);
   assert.deepStrictEqual([...set], ["next"]);
+
+  replaceCollection(array, null);
+  assert.deepStrictEqual(array, []);
+  replaceCollection(map, { object: 3 });
+  assert.deepStrictEqual([...map], [["object", 3]]);
+  replaceCollection(set, null);
+  assert.deepStrictEqual([...set], []);
+  assert.throws(() => replaceCollection({}, []), /Array, Map, or Set/);
 });
 
 test("record replacement preserves identity and removes stale properties", () => {
@@ -28,6 +36,7 @@ test("record replacement preserves identity and removes stale properties", () =>
   assert.deepStrictEqual(record, { keep: 2, added: 3 });
   replaceRecord(record, null);
   assert.deepStrictEqual(record, {});
+  assert.throws(() => replaceRecord([], {}), /plain object/);
 });
 
 test("store emits controlled changes and patches devices in place", () => {
@@ -47,6 +56,23 @@ test("store emits controlled changes and patches devices in place", () => {
   unsubscribe();
   store.replaceCollection("rooms", []);
   assert.strictEqual(changes.length, 2);
+
+  store.state.metadata = { stale: true };
+  assert.strictEqual(store.replaceRecord("metadata", { fresh: true }), store.state.metadata);
+  assert.deepStrictEqual(store.state.metadata, { fresh: true });
+});
+
+test("store validates subscriptions and supports alternate device collections", () => {
+  assert.throws(() => createStore([]), /Initial state/);
+  const accessory = { id: "a", value: 1 };
+  const store = createStore({ accessories: [accessory], invalid: null });
+  assert.throws(() => store.subscribe(null), /listener/);
+  assert.strictEqual(
+    store.patchDevice("a", { value: 2 }, { collection: "accessories", idKey: "id" }),
+    accessory,
+  );
+  assert.strictEqual(store.patchDevice("a", null, { collection: "accessories", idKey: "id" }), null);
+  assert.strictEqual(store.patchDevice("a", {}, { collection: "invalid", idKey: "id" }), null);
 });
 
 test("feature registry supplies only the public runtime context and runs lifecycle hooks", async () => {
@@ -81,6 +107,7 @@ test("registry rejects duplicate names and unsupported hook contracts", () => {
   assert.throws(() => features.registerFeature("locks", {}), /already registered/);
   assert.throws(() => features.registerFeature("bad name", {}), /feature name/);
   assert.throws(() => features.registerFeature("bad-hook", { render: true }), /render.*function/);
+  assert.throws(() => features.registerFeature("empty-factory", () => null), /object or constructor/);
 });
 
 test("createRuntime composes state, services, store, UI, and an isolated registry", () => {
@@ -103,4 +130,5 @@ test("standalone registerFeature supports an explicit registry", () => {
   const features = createFeatureRegistry({ state: {}, services: {}, ui: {} });
   const feature = registerFeature("scene", { render() {} }, features);
   assert.strictEqual(features.get("scene"), feature);
+  assert.ok(registerFeature("default-registry-feature", {}));
 });

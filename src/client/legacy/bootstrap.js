@@ -170,14 +170,11 @@
     MAX_EMBED_CARDS, MAX_TIME_CARDS, MAX_NOTIFICATION_CARDS, MAX_EMBED_TITLE, HTML_ZOOM_PRESETS,
     validateHttpsEmbedUrl, hostnameFromHttpsUrl, normalizeEmbedTitle, normalizeHtmlTileTitle,
   } = MLDDomain;
-
-  // Mutate in place — never reassign. Exported `let` bindings are snapshotted onto
-  // __MLD at load; reassignment desyncs part1 closures from post2/post3 chunks.
-  function replaceMap(map, next) {
-    for (const k of Object.keys(map)) delete map[k];
-    if (!next || typeof next !== "object") return;
-    for (const k of Object.keys(next)) map[k] = next[k];
-  }
+  const {
+    createRuntime,
+    replaceCollection: replaceList,
+    replaceRecord: replaceMap,
+  } = MLDRuntime;
 
   function applyHtmlTitleOverridesFromConfig(source, liveTitlesById = null) {
     const next = {};
@@ -1974,11 +1971,20 @@
   let sensorFilterBtnEl = null;
   let sensorFilterEmptyEl = null;
 
-  // Mutate exported arrays/maps in place so part1 closures stay in sync after the JS split.
-  function replaceList(list, next) {
-    list.length = 0;
-    const items = Array.isArray(next) ? next : [];
-    if (items.length) list.push(...items);
+  // Keep the legacy bindings and the temporary cross-chunk facade pointed at the
+  // same collections while features migrate onto the controlled runtime store.
+  const runtime = createRuntime({ ui: { document } }, {
+    cfg, rooms, devices, outlets, thermostats, tempSensors, sensors,
+    hubModes, scenes, locks, garageDoors, windowShades, ceilingFans, valves, music, cameras,
+    favorites, favoriteSizes, embedCards, timeCards, notificationCards, htmlTiles,
+    htmlTileTitleOverrides, favoritesLayout, snapshots, hubNotifications,
+    hubTileNotifications, hubTriggerActions,
+    levelOptimistic, switchOptimistic, lockOptimistic, garageOptimistic, shadeOptimistic,
+    fanOptimistic, valveOptimistic, musicOptimistic, setpointOptimistic,
+  });
+
+  function registerFeature(name, feature) {
+    return runtime.features.registerFeature(name, feature);
   }
 
   function repopulateThermoByRoom() {

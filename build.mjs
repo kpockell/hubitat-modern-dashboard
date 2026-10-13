@@ -5,11 +5,12 @@
 //   dist/ModernLightsDashboard.bundle.zip — Hubitat Bundles → Import ZIP
 //   hubitat/packageManifest.json          — HPM manifest (apps + files)
 
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, readdirSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import * as esbuild from "esbuild";
+import { zipSync } from "fflate";
 import { iconBase64, createIconPng } from "./lib/pwa-icons.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -525,11 +526,25 @@ function minifyCss(label, source) {
 
 function assertJsSyntax(label, path) {
   try {
-    execSync(`node --check "${path}"`, { stdio: "pipe" });
+    execFileSync(process.execPath, ["--check", path], { stdio: "pipe" });
   } catch (e) {
     const detail = e?.stderr?.toString().trim() || e?.message || "syntax error";
     throw new Error(`${label} has invalid JavaScript:\n${detail}`);
   }
+}
+
+function zipDirectory(dir) {
+  const entries = {};
+  const walk = (current, prefix = "") => {
+    for (const name of readdirSync(current).sort()) {
+      const path = join(current, name);
+      const entryName = prefix ? `${prefix}/${name}` : name;
+      if (statSync(path).isDirectory()) walk(path, entryName);
+      else entries[entryName] = new Uint8Array(readFileSync(path));
+    }
+  };
+  walk(dir);
+  return zipSync(entries, { level: 9 });
 }
 
 function fileManagerAssetList() {
@@ -738,7 +753,7 @@ HPM INSTALL (recommended):
 
 const bundleZip = join(dist, "ModernLightsDashboard.bundle.zip");
 rmSync(bundleZip, { force: true });
-execSync(`cd "${staging}" && zip -rq "${bundleZip}" .`, { stdio: "inherit" });
+writeFileSync(bundleZip, zipDirectory(staging));
 
 const hpmManifest = {
   packageName: APP_DISPLAY_NAME,

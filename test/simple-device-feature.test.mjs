@@ -24,6 +24,9 @@ function fixture(result = { ok: true }) {
 
 test("initial render and Hubitat events update each simple-device collection", () => {
   const { feature, state, renders } = fixture();
+  state.lockOptimistic.set(2, { lk: 1, st: "locking" });
+  state.garageOptimistic.set(3, { st: "opening" });
+  state.valveOptimistic.set(4, { st: "open" });
   feature.init();
   assert.strictEqual(renders.length, 1);
   for (const event of [
@@ -36,8 +39,16 @@ test("initial render and Hubitat events update each simple-device collection", (
   assert.deepStrictEqual(state.locks[0], { i: 2, lk: 1, st: "locked" });
   assert.strictEqual(state.garageDoors[0].st, "opening");
   assert.strictEqual(state.valves[0].st, "open");
+  assert.strictEqual(state.lockOptimistic.size, 0);
+  assert.strictEqual(state.garageOptimistic.size, 0);
+  assert.strictEqual(state.valveOptimistic.size, 0);
   assert.strictEqual(renders.length, 5);
   assert.strictEqual(feature.handleHubEvent({ source: "DEVICE", deviceId: 99, name: "switch", value: "on" }), false);
+  assert.strictEqual(feature.handleHubEvent({ source: "LOCATION", name: "mode", value: "Away" }), false);
+  feature.pause();
+  feature.resume();
+  feature.dispose();
+  assert.strictEqual(renders.at(-1)[1], "resume");
 });
 
 test("commands preserve optimistic success and roll back rejection", async () => {
@@ -67,4 +78,25 @@ test("command failure and missing devices fail closed", async () => {
   assert.deepStrictEqual(await failed.feature.command("locks", 99, "lock", null, { st: "locking" }), {
     ok: false, error: "device_not_found",
   });
+});
+
+test("settled unlock and garage-close events clear matching optimistic state only", () => {
+  const { feature, state } = fixture();
+  state.locks[0] = { i: 2, lk: 1, st: "locked" };
+  state.lockOptimistic.set(2, { lk: 0, st: "unlocking" });
+  state.garageDoors[0].st = "open";
+  state.garageOptimistic.set(3, { st: "closing" });
+  feature.handleHubEvent({ source: "DEVICE", deviceId: 2, name: "lock", value: "unlocked" });
+  feature.handleHubEvent({ source: "DEVICE", deviceId: 3, name: "door", value: "closed" });
+  assert.strictEqual(state.lockOptimistic.size, 0);
+  assert.strictEqual(state.garageOptimistic.size, 0);
+
+  state.lockOptimistic.set(2, { lk: 1, st: "locking" });
+  feature.handleHubEvent({ source: "DEVICE", deviceId: 2, name: "lock", value: "unlocked" });
+  assert.strictEqual(state.lockOptimistic.size, 1);
+  state.lockOptimistic.set(2, { lk: 0, st: "unlocked" });
+  feature.handleHubEvent({ source: "DEVICE", deviceId: 2, name: "lock", value: "unlocked" });
+  assert.strictEqual(state.lockOptimistic.size, 0);
+  assert.strictEqual(feature.handleHubEvent(null), false);
+  assert.strictEqual(feature.handleHubEvent({ source: "DEVICE" }), false);
 });

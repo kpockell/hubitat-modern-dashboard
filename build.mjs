@@ -490,7 +490,7 @@ function minifyJs(label, source) {
     minifySyntax: true,
     minifyIdentifiers:
       label === "mld-app.js" || label === "mld-app-core.js" || label === "mld-app-post.js"
-      || label === "mld-app-post2.js",
+      || label === "mld-app-post2.js" || label === "mld-app-post3.js",
     legalComments: "none",
     target: ["es2018"],
   });
@@ -646,6 +646,9 @@ const httpBundle = bundleClientModule(
 const uiBundle = bundleClientModule(
   join(root, "src", "client", "ui", "browser-entry.js")
 );
+const featureBundle = bundleClientModule(
+  join(root, "src", "client", "features", "browser-entry.js")
+);
 const part1Merged = `${appPre}\n${domainBundle}\n${part1Out}`;
 
 const jsOutputs = [
@@ -653,7 +656,7 @@ const jsOutputs = [
   ["mld-app-core.js", minifyJs("mld-app-core.js", `${httpBundle}\n${partCoreOut}`)],
   ["mld-app-post.js", minifyJs("mld-app-post.js", `${uiBundle}\n${part2Out}`)],
   ["mld-app-post2.js", minifyJs("mld-app-post2.js", `${lifecycleBundle}\n${part3Out}`)],
-  ["mld-app-post3.js", minifyJs("mld-app-post3.js", part4Out)],
+  ["mld-app-post3.js", minifyJs("mld-app-post3.js", `${featureBundle}\n${part4Out}`)],
 ];
 
 for (const [name, content] of jsOutputs) {

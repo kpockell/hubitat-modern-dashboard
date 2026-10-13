@@ -3035,6 +3035,30 @@
     if (colorSession) closeColorPopup(false);
   }
 
+  let simpleDeviceFeature = null;
+  function ensureSimpleDeviceFeature() {
+    if (simpleDeviceFeature || !globalThis.MLDFeatures) return simpleDeviceFeature;
+    simpleDeviceFeature = registerFeature("simple-devices", MLDFeatures.createSimpleDeviceFeature({
+      state: runtime.state,
+      services: runtime.services,
+      ui: {
+        clearOptimistic(type, id) {
+          if (type === "lock") clearLockOptimistic(id);
+          else if (type === "garage") clearGarageOptimistic(id);
+          else if (type === "valve") clearValveOptimistic(id);
+        },
+        renderSimpleDevices() {
+          updateStates();
+          const category = currentCategory();
+          if (category === "locks") renderLocksPopup();
+          else if (category === "sensors") refreshSensorsPopup();
+          else if (category === "favorites") postCall("refreshFavoritesPopup");
+        },
+      },
+    }));
+    return simpleDeviceFeature;
+  }
+
   // Hubitat event application remains feature-specific; socket ownership and
   // lifecycle are delegated to the injected transport controller below.
   function handleWsMessage(ev) {
@@ -3131,34 +3155,7 @@
           }
           return;
         }
-        const outletRec = outletMap.get(Number(m.deviceId)) || favDevMap.get(Number(m.deviceId));
-        if (outletRec?.isOutlet && m.name === "switch") {
-          const out = outlets.find((x) => x.i === Number(m.deviceId));
-          if (out) out.s = (m.value === "on") ? 1 : 0;
-          clearSwitchOptimistic(Number(m.deviceId));
-          updateStates();
-          return;
-        }
-        const lock = locks.find(x => x.i === Number(m.deviceId));
-        if (lock && String(m.name || "") === "lock") {
-          const val = String(m.value || "");
-          lock.st = val;
-          lock.lk = val === "locked" ? 1 : 0;
-          const opt = lockOptimistic.get(lock.i);
-          if (opt && lockOptimisticSatisfied(opt, lock)) clearLockOptimistic(lock.i);
-          if (currentCategory() === "locks") renderLocksPopup();
-          else if (currentCategory() === "favorites") postCall("refreshFavoritesPopup");
-          return;
-        }
-        const garage = garageDoors.find(x => x.i === Number(m.deviceId));
-        if (garage && String(m.name || "") === "door") {
-          garage.st = String(m.value || "");
-          const opt = garageOptimistic.get(garage.i);
-          if (opt && garageOptimisticSatisfied(opt, garage)) clearGarageOptimistic(garage.i);
-          if (currentCategory() === "locks") renderLocksPopup();
-          else if (currentCategory() === "favorites") postCall("refreshFavoritesPopup");
-          return;
-        }
+        if (ensureSimpleDeviceFeature()?.handleHubEvent(m)) return;
         const fan = ceilingFans.find(x => x.i === Number(m.deviceId));
         if (fan) {
           const name = String(m.name || "");
@@ -3208,18 +3205,6 @@
         const sen = sensors.find(x => x.i === Number(m.deviceId));
         if (s || sen) {
           if (applySensorLiveAttr(m.deviceId, m.name, m.value, m.unit)) refreshSensorViews();
-          return;
-        }
-        const valve = valves.find(x => x.i === Number(m.deviceId));
-        if (valve) {
-          const nm = String(m.name || "").toLowerCase();
-          if (nm === "valve") {
-            valve.st = String(m.value || "");
-            const opt = valveOptimistic.get(valve.i);
-            if (opt?.st != null && valve.st === opt.st) clearValveOptimistic(valve.i);
-            if (currentCategory() === "sensors") refreshSensorsPopup();
-            else if (currentCategory() === "favorites") postCall("refreshFavoritesPopup");
-          }
           return;
         }
       } catch {}

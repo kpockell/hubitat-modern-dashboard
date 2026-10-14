@@ -1353,7 +1353,6 @@
     replaceList(garageDoors, d.garageDoors);
     replaceList(windowShades, d.windowShades);
     replaceList(ceilingFans, d.ceilingFans);
-    if (!Array.isArray(valves)) valves = [];
     replaceList(valves, Array.isArray(d.valves) ? d.valves : []);
     replaceList(music, d.music);
     replaceList(cameras, sortCamerasByOrder(Array.isArray(d.cameras) ? d.cameras : [], cfg.cameraOrder));

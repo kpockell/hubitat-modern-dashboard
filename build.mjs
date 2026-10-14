@@ -477,13 +477,18 @@ function assertUploadBlobLimits() {
   }
 }
 
-/** Minify without renaming identifiers so split-chunk __MLD exports stay stable. */
+/**
+ * The boot chunk explicitly publishes stable object keys onto __MLD, so its
+ * private lexical bindings can be shortened without changing later chunks.
+ * Post chunks retain their legacy identifiers until explicit entries replace
+ * the regex rewriter.
+ */
 function minifyJs(label, source) {
   const result = esbuild.transformSync(source, {
     loader: "js",
     minifyWhitespace: true,
     minifySyntax: true,
-    minifyIdentifiers: false,
+    minifyIdentifiers: label === "mld-app.js",
     legalComments: "none",
     target: ["es2018"],
   });
@@ -628,7 +633,7 @@ const { part1Out, partCoreOut, part2Out, part3Out, part4Out } =
   splitAppJs(join(root, "src", "client", "legacy"));
 const appPre = readFileSync(join(root, "src", "app-pre.js"), "utf8").trimEnd();
 const domainBundle = bundleClientModule(
-  join(root, "src", "client", "domain", "browser-entry.js")
+  join(root, "src", "client", "browser-entry.js")
 );
 const part1Merged = `${appPre}\n${domainBundle}\n${part1Out}`;
 

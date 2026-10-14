@@ -5,7 +5,7 @@ import {
   sensorCardFilterTypes,
   sensorTemperatureReading,
   climateSensorsByRoom,
-} from "../preview/merge-sensor-card.mjs";
+} from "../src/client/domain/sensors.mjs";
 import {
   filterSensorExForType,
   sensorLastEventLine,

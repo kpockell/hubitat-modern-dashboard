@@ -92,26 +92,28 @@ test("thermostat hub events update mode, operating state, setpoints, and control
   assert.equal(renders.length, 9);
 });
 
-test("thermostat locks prevent conflicting mode, fan-mode, and vane updates", () => {
+test("thermostat locks consume recognized echoes without applying them", () => {
   const { feature, tstat, modeLocked, fanLocked, vaneLocked, renders } = fixture();
   modeLocked.add(41);
   fanLocked.add(41);
   vaneLocked.add(41);
 
-  assert.equal(feature.handleHubEvent({
-    source: "DEVICE", deviceId: 41, name: "thermostatMode", value: "heat",
-  }), false);
-  assert.equal(feature.handleHubEvent({
-    source: "DEVICE", deviceId: 41, name: "thermostatFanMode", value: "on",
-  }), false);
-  assert.equal(feature.handleHubEvent({
-    source: "DEVICE", deviceId: 41, name: "comfortFanSpeed", value: "medium",
-  }), false);
-  assert.equal(feature.handleHubEvent({
-    source: "DEVICE", deviceId: 41, name: "vanePosition", value: "1",
-  }), false);
-  assert.deepEqual({ tm: tstat.tm, fm: tstat.fm, cfs: tstat.cfs, vp: tstat.vp }, {
-    tm: "off", fm: "auto", cfs: "auto", vp: "auto",
+  const lockedEvents = [
+    ["thermostatMode", "heat", "mode"],
+    ["comfortMode", "sleep", "mode"],
+    ["thermostatOperatingState", "heating", "operating-state"],
+    ["thermostatFanMode", "on", "fan-mode"],
+    ["comfortFanSpeed", "medium", "comfort-fan-speed"],
+    ["vanePosition", "1", "vane-position"],
+  ];
+  for (const [name, value, kind] of lockedEvents) {
+    assert.deepEqual(feature.applyHubEvent({ source: "DEVICE", deviceId: 41, name, value }), {
+      handled: true,
+      kind,
+    });
+  }
+  assert.deepEqual({ tm: tstat.tm, os: tstat.os, fm: tstat.fm, cfs: tstat.cfs, vp: tstat.vp }, {
+    tm: "off", os: "idle", fm: "auto", cfs: "auto", vp: "auto",
   });
   assert.equal(renders.length, 0);
 });

@@ -36,13 +36,14 @@ export function createThermostatsFeature({ state, ui }) {
     const thermostat = findById(state.thermostats, id);
     if (!thermostat) return { handled: false };
 
-    if ((name === "thermostatMode" || name === "comfortMode")
-      && !ui.isModeLocked?.(thermostat.i)) {
+    if (name === "thermostatMode" || name === "comfortMode") {
+      if (ui.isModeLocked?.(thermostat.i)) return { handled: true, kind: "mode" };
       thermostat.tm = event.value;
       render("hub-event", "mode", thermostat);
       return { handled: true, kind: "mode" };
     }
-    if (name === "thermostatOperatingState" && !ui.isModeLocked?.(thermostat.i)) {
+    if (name === "thermostatOperatingState") {
+      if (ui.isModeLocked?.(thermostat.i)) return { handled: true, kind: "operating-state" };
       thermostat.os = event.value;
       render("hub-event", "operating-state", thermostat);
       return { handled: true, kind: "operating-state" };
@@ -64,13 +65,15 @@ export function createThermostatsFeature({ state, ui }) {
       render("hub-event", "temperature", thermostat);
       return { handled: true, kind: "temperature" };
     }
-    if (name === "thermostatFanMode" && !ui.isFanModeLocked?.(thermostat.i)) {
+    if (name === "thermostatFanMode") {
+      if (ui.isFanModeLocked?.(thermostat.i)) return { handled: true, kind: "fan-mode" };
       thermostat.fm = event.value;
       if (thermostat.hasCfs) thermostat.cfs = event.value;
       render("hub-event", "fan-mode", thermostat);
       return { handled: true, kind: "fan-mode" };
     }
-    if (name === "comfortFanSpeed" && !ui.isFanModeLocked?.(thermostat.i)) {
+    if (name === "comfortFanSpeed") {
+      if (ui.isFanModeLocked?.(thermostat.i)) return { handled: true, kind: "comfort-fan-speed" };
       thermostat.cfs = event.value;
       thermostat.fm = event.value;
       render("hub-event", "comfort-fan-speed", thermostat);
@@ -81,7 +84,8 @@ export function createThermostatsFeature({ state, ui }) {
       render("hub-event", "fan-speed", thermostat);
       return { handled: true, kind: "fan-speed" };
     }
-    if (name === "vanePosition" && !ui.isVaneLocked?.(thermostat.i)) {
+    if (name === "vanePosition") {
+      if (ui.isVaneLocked?.(thermostat.i)) return { handled: true, kind: "vane-position" };
       thermostat.vp = event.value;
       render("hub-event", "vane-position", thermostat);
       return { handled: true, kind: "vane-position" };

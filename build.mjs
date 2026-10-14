@@ -12,7 +12,7 @@ import { dirname, join } from "node:path";
 import * as esbuild from "esbuild";
 import { zipSync } from "fflate";
 import { iconBase64, createIconPng } from "./lib/pwa-icons.mjs";
-import { CLIENT_CHUNK_NAMES } from "./lib/client-source.mjs";
+import { LEGACY_JS_ENTRY_POINTS } from "./lib/js-entry-points.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = __dirname;
@@ -21,7 +21,7 @@ const upload = join(dist, "upload");
 const staging = join(dist, "bundle-staging");
 const hubitat = join(root, "hubitat");
 
-const LEGACY_JS_CHUNKS = CLIENT_CHUNK_NAMES.map((name) => `${name}.js`);
+const LEGACY_JS_CHUNKS = LEGACY_JS_ENTRY_POINTS.map(({ chunk }) => `${chunk}.js`);
 // File Manager's documented ceiling is ~124 KB, but uploads near that size have
 // truncated in practice. Keep a 120 KB safety cap so local blobs actually load.
 const HUB_MAX_BLOB = 120 * 1024;
@@ -421,22 +421,22 @@ function splitAppJs(srcDir) {
   const partCoreOut = wrapPostChunk(
     partCoreLines.join("\n"),
     exportIdsForCore,
-    "upload mld-app.js before mld-app-core.js"
+    LEGACY_JS_ENTRY_POINTS[1].missingPrereqMessage
   );
   const part2Out = wrapPostChunk(
     part2Lines.join("\n"),
     exportIdsForPart2,
-    "upload mld-app-core.js before mld-app-post.js"
+    LEGACY_JS_ENTRY_POINTS[2].missingPrereqMessage
   );
   const part3Out = wrapPostChunk(
     part3Lines.join("\n"),
     exportIdsForPart3,
-    "upload mld-app-post.js before mld-app-post2.js"
+    LEGACY_JS_ENTRY_POINTS[3].missingPrereqMessage
   );
   const part4Out = wrapPostChunk(
     part4Lines.join("\n"),
     exportIdsForPart4,
-    "upload mld-app-post2.js before mld-app-post3.js"
+    LEGACY_JS_ENTRY_POINTS[4].missingPrereqMessage
   );
 
   assertNoBareExportRefs("mld-app-post.js", part2Out, ["activeTab", "tabMode", "tabViewEl", "quickPopupOpenType"]);
@@ -653,14 +653,17 @@ const featureBundle = bundleClientModule(
   join(root, "src", "client", "features", "browser-entry.js")
 );
 const part1Merged = `${appPre}\n${domainBundle}\n${part1Out}`;
+const legacyOutputsByChunk = {
+  bootstrap: part1Merged,
+  core: `${httpBundle}\n${applicationShellBundle}\n${partCoreOut}`,
+  post: `${uiBundle}\n${part2Out}`,
+  post2: `${lifecycleBundle}\n${part3Out}`,
+  post3: `${featureBundle}\n${part4Out}`,
+};
 
-const jsOutputs = [
-  ["mld-app.js", minifyJs("mld-app.js", part1Merged)],
-  ["mld-app-core.js", minifyJs("mld-app-core.js", `${httpBundle}\n${applicationShellBundle}\n${partCoreOut}`)],
-  ["mld-app-post.js", minifyJs("mld-app-post.js", `${uiBundle}\n${part2Out}`)],
-  ["mld-app-post2.js", minifyJs("mld-app-post2.js", `${lifecycleBundle}\n${part3Out}`)],
-  ["mld-app-post3.js", minifyJs("mld-app-post3.js", `${featureBundle}\n${part4Out}`)],
-];
+const jsOutputs = LEGACY_JS_ENTRY_POINTS.map(({ chunk, output }) => (
+  [output, minifyJs(output, legacyOutputsByChunk[chunk])]
+));
 
 for (const [name, content] of jsOutputs) {
   assertUnderHubLimit(name, content);

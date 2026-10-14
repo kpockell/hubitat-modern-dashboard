@@ -209,7 +209,10 @@ function auditBuiltBlobs() {
   for (const name of CHUNKS.slice(1)) {
     const body = readFileSync(join(upload, name), "utf8");
     if (!body.includes("globalThis.__MLD")) fail(`${name} missing __MLD wrapper`);
-    if (!body.includes("Object.assign(M")) fail(`${name} missing Object.assign export block`);
+    const facadeAlias = body.match(/(?:const|let|var) ([A-Za-z_$][\w$]*)=globalThis\.__MLD/)?.[1];
+    if (!facadeAlias || !body.includes(`Object.assign(${facadeAlias},`)) {
+      fail(`${name} missing Object.assign export block`);
+    }
   }
   ok("post chunks use __MLD IIFE wrapper + Object.assign exports");
 

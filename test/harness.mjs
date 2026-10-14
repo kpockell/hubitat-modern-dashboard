@@ -4,6 +4,7 @@ import vm from "vm";
 import { fileURLToPath } from "url";
 import * as favoriteDomain from "../src/client/domain/index.mjs";
 import * as clientRuntime from "../src/client/runtime/index.mjs";
+import * as clientTransport from "../src/client/transport/index.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const appPath = join(root, "src", "client", "legacy", "bootstrap.js");
@@ -95,6 +96,7 @@ export function createAppHarness({ storage: initialStorage = {}, search = "" } =
     },
   };
   sandbox.MLDRuntime = clientRuntime;
+  sandbox.MLDTransport = clientTransport;
   const context = vm.createContext(sandbox);
 
   new vm.Script(readFileSync(prePath, "utf8"), { filename: prePath }).runInContext(context);

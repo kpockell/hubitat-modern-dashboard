@@ -1449,6 +1449,7 @@
   let cameraReorderSnapshot = null;
   let cameraReorderDraftOrder = null;
   const cameraReorderEls = new Map();
+  const camerasFeature = globalThis.MLDFeatures?.createCamerasFeature?.() || null;
 
   function isCameraReorderActive() {
     return cameraReorderActive;
@@ -1658,9 +1659,7 @@
   }
 
   function cameraStreamType(cam) {
-    if (cam?.t === "mjpg" || cam?.t === "webrtc") return cam.t;
-    const u = cam?.u || "";
-    return u.includes(".mjpg") ? "mjpg" : "webrtc";
+    return camerasFeature?.cameraStreamType(cam) || "webrtc";
   }
 
   function cameraTileStreamType(tile) {
@@ -1675,22 +1674,14 @@
   }
 
   function cameraTileStreamUrl(cam, hi) {
-    if (!cam) return "";
-    if (cameraStreamType(cam) === "mjpg") return cam.u || "";
-    const base = hi ? (cam.uh || cam.u) : cam.u;
-    return cameraEmbedUrl(base || "");
-  }
-
-  /** Normalize to go2rtc webrtc.html with audio track available (player starts muted; unmute in iframe). */
-  function isBlankIframe(iframe) {
-    const src = iframe?.src || "";
-    return !src || src === "about:blank" || src.endsWith("about:blank");
+    return camerasFeature?.cameraTileStreamUrl(cam, hi) || "";
   }
 
   function isStoppedCameraMedia(media, type) {
     if (!media) return true;
     if (type === "mjpg") return !media.getAttribute("src");
-    return isBlankIframe(media);
+    const src = media?.src || "";
+    return !src || src === "about:blank" || src.endsWith("about:blank");
   }
 
   function startCameraMedia(media, type, url) {
@@ -1706,15 +1697,7 @@
   }
 
   function cameraEmbedUrl(baseUrl) {
-    if (!baseUrl) return "";
-    try {
-      const u = new URL(baseUrl, location.href);
-      if (/stream\.html$/i.test(u.pathname)) u.pathname = u.pathname.replace(/stream\.html$/i, "webrtc.html");
-      u.searchParams.set("media", "video+audio");
-      return u.toString();
-    } catch {
-      return baseUrl;
-    }
+    return baseUrl || "";
   }
 
   function cameraTilePlayUrl(tile) {
@@ -1730,7 +1713,7 @@
     hdBtn.textContent = onHi ? "SD" : "HD";
     hdBtn.setAttribute("aria-pressed", onHi ? "true" : "false");
     hdBtn.classList.toggle("camera-hd-active", onHi);
-    hdBtn.setAttribute("aria-label", onHi ? "Switch to standard definition stream" : "Switch to high definition stream");
+    hdBtn.setAttribute("aria-label", onHi ? "Switch to SD stream" : "Switch to HD stream");
   }
 
   function toggleCameraHd(tile) {

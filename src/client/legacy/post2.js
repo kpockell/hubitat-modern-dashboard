@@ -3717,7 +3717,8 @@
   // Password gate UI lives here (post2) so mld-app.js stays under Hubitat's 128 KB
   // File Manager limit — putting it in part1 previously left only ~3 KB headroom.
   function syncDashboardAuthState(required) {
-    ensureApplicationShellFeature()?.setAuthRequired(required);
+    dashboardPasswordRequired = !!required;
+    ensureApplicationShellFeature()?.setAuthRequired(dashboardPasswordRequired);
   }
 
   async function unlockDashboard(password) {

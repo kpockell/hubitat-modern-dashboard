@@ -1,5 +1,4 @@
 import {
-  createApplicationShellFeature,
   createEnvironmentMediaFeature,
   createFavoritesCustomCardsFeature,
   createLightsColorSnapshotsFeature,
@@ -9,7 +8,7 @@ import {
 } from "./index.mjs";
 
 globalThis.MLDFeatures = {
-  createApplicationShellFeature,
+  ...(globalThis.MLDFeatures || {}),
   createEnvironmentMediaFeature,
   createFavoritesCustomCardsFeature,
   createLightsColorSnapshotsFeature,

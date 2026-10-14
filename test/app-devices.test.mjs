@@ -42,6 +42,16 @@ test("shade websocket events normalize position, switch, and motion states", () 
   assert.strictEqual(api.shadeHasStop(shade), true);
 });
 
+test("shade websocket events respect an active optimistic command", () => {
+  const { api } = createAppHarness();
+  const shade = { i: 30, st: "closed", pos: 0, hasPos: true };
+  api.state.windowShades.push(shade);
+  api.setShadeOptimistic(30, { st: "opening", pos: 60 });
+
+  assert.strictEqual(api.applyShadeWsEvent(shade, "position", 10), true);
+  assert.deepStrictEqual(plain({ st: shade.st, pos: shade.pos }), { st: "opening", pos: 60 });
+});
+
 test("ceiling fan speeds are normalized, sorted, intersected, and unioned", () => {
   const { api } = createAppHarness();
   const named = { supSp: "high, low, medium" };
@@ -53,6 +63,8 @@ test("ceiling fan speeds are normalized, sorted, intersected, and unioned", () =
   assert.strictEqual(api.ceilingFanSupportsSpeed(named, "medium"), true);
   assert.strictEqual(api.ceilingFanSupportsSpeed(named, "turbo"), false);
   assert.strictEqual(api.ceilingFanSpeedLabel("medium-high"), "Med-High");
+  assert.deepStrictEqual(Array.from(api.ceilingFanSpeeds({ supSp: "1,2,3,4,5,6" })), ["1", "2", "3", "4", "5", "6"]);
+  assert.strictEqual(api.fanSpinDuration({ supSp: "low,medium,high" }, "high"), 0.9);
 });
 
 test("fan, valve, shade, and music optimistic helpers expose user-facing state", () => {
@@ -79,6 +91,9 @@ test("fan, valve, shade, and music optimistic helpers expose user-facing state",
   assert.strictEqual(api.isMusicPlaying(api.effectiveMusicStatus(music)), true);
   assert.strictEqual(api.effectiveMusicVolume(music), 35);
   assert.strictEqual(api.musicStatusLabel(music), "Playing");
+  assert.deepStrictEqual(plain(api.musicControls({ f: 127 })), {
+    play: true, pause: true, stop: true, prev: true, next: true, volume: true, mute: true,
+  });
 });
 
 test("average shade position ignores devices without position support", () => {

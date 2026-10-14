@@ -102,6 +102,13 @@ function parseTopLevelIds(lines) {
     m = line.match(/^  (?:async )?function ([A-Za-z_$][\w$]*)/);
     if (m) ids.push(m[1]);
   }
+  const source = lines.join("\n");
+  for (const match of source.matchAll(/^  (?:let|const)\s*\{([\s\S]*?)\}\s*=/gm)) {
+    for (const binding of match[1].split(",")) {
+      const name = binding.trim().split(/\s*:\s*/).pop()?.split(/\s*=\s*/)[0]?.trim();
+      if (/^[A-Za-z_$][\w$]*$/.test(name || "")) ids.push(name);
+    }
+  }
   return [...new Set(ids)];
 }
 
@@ -488,6 +495,20 @@ function minifyJs(label, source) {
   return result.code;
 }
 
+function bundleClientModule(entryPoint) {
+  const result = esbuild.buildSync({
+    entryPoints: [entryPoint],
+    bundle: true,
+    format: "iife",
+    platform: "browser",
+    target: ["es2018"],
+    write: false,
+    minify: true,
+    legalComments: "none",
+  });
+  return result.outputFiles[0].text.trimEnd();
+}
+
 function minifyCss(label, source) {
   const result = esbuild.transformSync(source, {
     loader: "css",
@@ -606,7 +627,10 @@ for (const size of [192, 512, 1024]) {
 const { part1Out, partCoreOut, part2Out, part3Out, part4Out } =
   splitAppJs(join(root, "src", "client", "legacy"));
 const appPre = readFileSync(join(root, "src", "app-pre.js"), "utf8").trimEnd();
-const part1Merged = `${appPre}\n${part1Out}`;
+const domainBundle = bundleClientModule(
+  join(root, "src", "client", "domain", "browser-entry.js")
+);
+const part1Merged = `${appPre}\n${domainBundle}\n${part1Out}`;
 
 const jsOutputs = [
   ["mld-app.js", minifyJs("mld-app.js", part1Merged)],

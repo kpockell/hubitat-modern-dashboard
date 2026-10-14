@@ -165,53 +165,11 @@
     try { localStorage.setItem(SENSORS_FLAT_STORAGE_KEY, on ? "1" : "0"); } catch {}
   }
 
-  const FAVORITE_SIZE_PRESET_SET = new Set(["full", "square", "wide", "tall", "large", "portrait", "standard", "compact", "viewport"]);
-  const EMBED_SIZE_PRESET_SET = new Set(["compact", "standard", "wide", "square", "portrait", "full", "tall", "large", "viewport"]);
-  const TIME_SIZE_PRESET_SET = new Set(["compact", "standard", "square", "wide", "tall", "large"]);
-  const TIME_STYLE_SET = new Set(["time", "time_seconds", "time_date"]);
-  const TIME_STYLE_LABELS = {
-    time: "Just the time",
-    time_seconds: "Time with seconds",
-    time_date: "Time with date",
-  };
-  const MAX_EMBED_CARDS = 12;
-  const MAX_TIME_CARDS = 12;
-  const MAX_NOTIFICATION_CARDS = 12;
-  const NOTIFICATION_SIZE_PRESET_SET = new Set(["compact", "standard", "square", "wide", "tall", "large", "full", "viewport"]);
-  const MAX_EMBED_TITLE = 80;
-  const MAX_EMBED_URL = 4096;
-
-  function validateHttpsEmbedUrl(raw) {
-    if (raw == null) return null;
-    const s = String(raw).trim();
-    if (!s || s.length > MAX_EMBED_URL) return null;
-    if (/[\u0000-\u001F\u007F]/.test(s)) return null;
-    if (s.startsWith("//")) return null;
-    let u;
-    try { u = new URL(s); } catch { return null; }
-    if (u.protocol !== "https:") return null;
-    if (!u.hostname) return null;
-    return s;
-  }
-
-  function hostnameFromHttpsUrl(url) {
-    try { return new URL(url).hostname || ""; } catch { return ""; }
-  }
-
-  function normalizeEmbedTitle(raw, url) {
-    let t = raw == null ? "" : String(raw).replace(/[\u0000-\u001F\u007F]/g, " ").trim();
-    if (t.length > MAX_EMBED_TITLE) t = t.slice(0, MAX_EMBED_TITLE).trim();
-    if (t) return t;
-    return hostnameFromHttpsUrl(url) || "Embed";
-  }
-
-  function normalizeHtmlTileTitle(raw, fallback) {
-    let t = raw == null ? "" : String(raw).replace(/[\u0000-\u001F\u007F]/g, " ").trim();
-    if (t.length > MAX_EMBED_TITLE) t = t.slice(0, MAX_EMBED_TITLE).trim();
-    if (t) return t;
-    const fb = fallback == null ? "" : String(fallback).trim();
-    return fb || "HTML";
-  }
+  const {
+    FAVORITE_SIZE_PRESET_SET, EMBED_SIZE_PRESET_SET, TIME_SIZE_PRESET_SET, TIME_STYLE_LABELS,
+    MAX_EMBED_CARDS, MAX_TIME_CARDS, MAX_NOTIFICATION_CARDS, MAX_EMBED_TITLE, HTML_ZOOM_PRESETS,
+    validateHttpsEmbedUrl, hostnameFromHttpsUrl, normalizeEmbedTitle, normalizeHtmlTileTitle,
+  } = MLDDomain;
 
   // Mutate in place — never reassign. Exported `let` bindings are snapshotted onto
   // __MLD at load; reassignment desyncs part1 closures from post2/post3 chunks.
@@ -248,149 +206,11 @@
     return out;
   }
 
-  function parseEmbedInput(raw) {
-    const text = String(raw || "").trim();
-    if (!text) return { ok: false, error: "Enter an HTTPS embed URL or iframe code" };
-    if (/<script[\s>]/i.test(text) && !/<iframe[\s>]/i.test(text)) {
-      return { ok: false, error: "Script embeds are not supported — paste an iframe embed URL instead" };
-    }
-    let candidate = text;
-    if (/<iframe[\s>]/i.test(text)) {
-      try {
-        const doc = new DOMParser().parseFromString(text, "text/html");
-        const iframe = doc.querySelector("iframe[src]");
-        if (!iframe) return { ok: false, error: "Could not find an iframe src in the pasted code" };
-        candidate = String(iframe.getAttribute("src") || "").trim();
-      } catch {
-        return { ok: false, error: "Could not parse iframe code" };
-      }
-    }
-    const url = validateHttpsEmbedUrl(candidate);
-    if (!url) return { ok: false, error: "URL must be an absolute https:// link" };
-    return { ok: true, url };
-  }
-
-  function isSameOriginEmbedUrl(url) {
-    try {
-      return new URL(url, location.href).origin === location.origin;
-    } catch {
-      return false;
-    }
-  }
-
-  function deviceFavoriteKey(id) { return "d:" + Number(id); }
-  function embedFavoriteKey(id) {
-    const s = String(id || "");
-    return "e:" + (s.startsWith("e_") ? s.slice(2) : s);
-  }
-  function timeFavoriteKey(id) {
-    const s = String(id || "");
-    return "t:" + (s.startsWith("t_") ? s.slice(2) : s);
-  }
-  function notificationFavoriteKey(id) {
-    const s = String(id || "");
-    return "n:" + (s.startsWith("n_") ? s.slice(2) : s);
-  }
-  function htmlFavoriteKey(id) {
-    return "h:" + String(id || "");
-  }
-  function parseHtmlTileId(raw) {
-    const id = String(raw || "").trim();
-    const colon = id.indexOf(":");
-    if (colon <= 0) return null;
-    const deviceId = id.slice(0, colon);
-    const attribute = id.slice(colon + 1);
-    if (!/^\d+$/.test(deviceId) || !/^[A-Za-z0-9_.-]+$/.test(attribute)) return null;
-    return { id: deviceId + ":" + attribute, deviceId: Number(deviceId), attribute };
-  }
-  function normalizeTimeStyle(raw) {
-    const s = String(raw || "").trim();
-    return TIME_STYLE_SET.has(s) ? s : "time";
-  }
-  function normalizeTimeSize(raw) {
-    const s = String(raw || "").trim();
-    return TIME_SIZE_PRESET_SET.has(s) ? s : "square";
-  }
-  function normalizeNotificationSize(raw) {
-    const s = String(raw || "").trim();
-    return NOTIFICATION_SIZE_PRESET_SET.has(s) ? s : "tall";
-  }
-  const HTML_ZOOM_PRESETS = [50, 75, 100, 125, 150];
-  function normalizeHtmlZoom(raw) {
-    const n = Number(raw);
-    return HTML_ZOOM_PRESETS.includes(n) ? n : 100;
-  }
-  function favoriteEntryKey(entry) {
-    if (!entry) return "";
-    if (entry.type === "embed") return embedFavoriteKey(entry.card?.id);
-    if (entry.type === "time") return timeFavoriteKey(entry.card?.id);
-    if (entry.type === "notifications") return notificationFavoriteKey(entry.card?.id);
-    if (entry.type === "html") return htmlFavoriteKey(entry.tile?.id);
-    if (entry.dev?.i == null) return "";
-    return deviceFavoriteKey(entry.dev.i);
-  }
-
-  function normalizeFavoritesLayout(layout, deviceIds, cards, timeCardsList, notificationCardsList, htmlTilesList) {
-    const validDevices = new Set((deviceIds || []).map(Number));
-    const validEmbeds = new Set((cards || []).map((c) => String(c.id)));
-    const validTimes = new Set((timeCardsList || []).map((c) => String(c.id)));
-    const validNotifs = new Set((notificationCardsList || []).map((c) => String(c.id)));
-    const validHtml = new Set((htmlTilesList || []).map((tile) => String(tile.id)));
-    const out = [];
-    const seen = new Set();
-    for (const raw of layout || []) {
-      const s = String(raw || "").trim();
-      let key = null;
-      if (s.startsWith("d:") && /^\d+$/.test(s.slice(2))) key = s;
-      else if (s.startsWith("e:")) {
-        let rest = s.slice(2);
-        if (rest.startsWith("e_")) rest = rest.slice(2);
-        if (/^[A-Za-z0-9_-]+$/.test(rest)) key = "e:" + rest;
-      } else if (s.startsWith("e_") && /^e_[A-Za-z0-9_-]+$/.test(s)) {
-        key = "e:" + s.slice(2);
-      } else if (s.startsWith("t:")) {
-        let rest = s.slice(2);
-        if (rest.startsWith("t_")) rest = rest.slice(2);
-        if (/^[A-Za-z0-9_-]+$/.test(rest)) key = "t:" + rest;
-      } else if (s.startsWith("t_") && /^t_[A-Za-z0-9_-]+$/.test(s)) {
-        key = "t:" + s.slice(2);
-      } else if (s.startsWith("n:")) {
-        let rest = s.slice(2);
-        if (rest.startsWith("n_")) rest = rest.slice(2);
-        if (/^[A-Za-z0-9_-]+$/.test(rest)) key = "n:" + rest;
-      } else if (s.startsWith("n_") && /^n_[A-Za-z0-9_-]+$/.test(s)) {
-        key = "n:" + s.slice(2);
-      } else if (s.startsWith("h:")) {
-        const parsed = parseHtmlTileId(s.slice(2));
-        if (parsed) key = htmlFavoriteKey(parsed.id);
-      }
-      if (!key || seen.has(key)) continue;
-      if (key.startsWith("d:") && !validDevices.has(Number(key.slice(2)))) continue;
-      if (key.startsWith("e:") && !validEmbeds.has("e_" + key.slice(2))) continue;
-      if (key.startsWith("t:") && !validTimes.has("t_" + key.slice(2))) continue;
-      if (key.startsWith("n:") && !validNotifs.has("n_" + key.slice(2))) continue;
-      if (key.startsWith("h:") && !validHtml.has(key.slice(2))) continue;
-      seen.add(key);
-      out.push(key);
-    }
-    for (const id of deviceIds || []) {
-      const key = deviceFavoriteKey(id);
-      if (!seen.has(key)) { seen.add(key); out.push(key); }
-    }
-    for (const card of cards || []) {
-      const key = embedFavoriteKey(card.id);
-      if (!seen.has(key)) { seen.add(key); out.push(key); }
-    }
-    for (const card of timeCardsList || []) {
-      const key = timeFavoriteKey(card.id);
-      if (!seen.has(key)) { seen.add(key); out.push(key); }
-    }
-    for (const card of notificationCardsList || []) {
-      const key = notificationFavoriteKey(card.id);
-      if (!seen.has(key)) { seen.add(key); out.push(key); }
-    }
-    return out;
-  }
+  const {
+    parseEmbedInput, isSameOriginEmbedUrl, deviceFavoriteKey, embedFavoriteKey, timeFavoriteKey,
+    notificationFavoriteKey, htmlFavoriteKey, parseHtmlTileId, normalizeTimeStyle, normalizeTimeSize,
+    normalizeNotificationSize, normalizeHtmlZoom, favoriteEntryKey, normalizeFavoritesLayout,
+  } = MLDDomain;
 
   function syncEmbedStateToMld() {
     const m = globalThis.__MLD;
@@ -406,22 +226,7 @@
     m.htmlTitleEditorOpen = htmlTitleEditorOpen;
   }
 
-  function mapTimeCardsFromConfig(list) {
-    if (!Array.isArray(list)) return null;
-    return list.map((c) => ({
-      id: String(c.id || ""),
-      style: normalizeTimeStyle(c.style),
-      size: normalizeTimeSize(c.size),
-    })).filter((c) => c.id.startsWith("t_"));
-  }
-
-  function mapNotificationCardsFromConfig(list) {
-    if (!Array.isArray(list)) return null;
-    return list.map((c) => ({
-      id: String(c.id || ""),
-      size: normalizeNotificationSize(c.size),
-    })).filter((c) => c.id.startsWith("n_"));
-  }
+  const { mapTimeCardsFromConfig, mapNotificationCardsFromConfig } = MLDDomain;
 
   function applyHtmlCatalogFromData(d) {
     if (!Array.isArray(d?.htmlTiles)) return false;

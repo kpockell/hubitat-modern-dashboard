@@ -1116,7 +1116,7 @@
       if (!dragging) {
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
-        if (Math.hypot(dx, dy) < REORDER_DRAG_THRESHOLD) return;
+        if (!dragThresholdExceeded(dx, dy, REORDER_DRAG_THRESHOLD)) return;
         beginDrag(e);
       }
       positionFloat(e.clientY);
@@ -1213,7 +1213,7 @@
       if (!dragging) {
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
-        if (Math.hypot(dx, dy) < REORDER_DRAG_THRESHOLD) return;
+        if (!dragThresholdExceeded(dx, dy, REORDER_DRAG_THRESHOLD)) return;
         beginDrag(e);
       }
       positionFloat(e.clientX);

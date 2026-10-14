@@ -63,6 +63,55 @@ test("embed configuration drops invalid cards and normalizes all card types", ()
   ]);
 });
 
+test("custom-card reconciliation preserves collection identity and cached HTML bodies", () => {
+  const { api } = createAppHarness();
+  const embeds = api.state.embedCards;
+  const times = api.state.timeCards;
+  const notifications = api.state.notificationCards;
+  const html = api.state.htmlTiles;
+  const layout = api.state.favoritesLayout;
+
+  api.state.favorites.push(12);
+  api.applyEmbedConfigFromData({
+    config: {
+      embedCards: [{ id: "e_cam", title: "Camera", url: "https://cam.example/live", size: "tall" }],
+      timeCards: [{ id: "t_clock", style: "time", size: "square" }],
+      notificationCards: [{ id: "n_alerts", size: "tall" }],
+      favoritesLayout: ["e:cam", "t:clock", "n:alerts", "d:12", "h:7:status"],
+    },
+  }, { allowDuringReorder: true });
+  api.applyHtmlCatalogFromData({
+    config: { favorites: [12], favoritesLayout: Array.from(layout) },
+    htmlTiles: [{ id: "7:status", name: "Status", html: "<b>Locked</b>" }],
+  });
+  api.applyHtmlCatalogFromData({
+    config: { favorites: [12], favoritesLayout: Array.from(layout) },
+    htmlTiles: [{ id: "7:status", name: "Status" }],
+  });
+
+  assert.strictEqual(api.state.embedCards, embeds);
+  assert.strictEqual(api.state.timeCards, times);
+  assert.strictEqual(api.state.notificationCards, notifications);
+  assert.strictEqual(api.state.htmlTiles, html);
+  assert.strictEqual(api.state.favoritesLayout, layout);
+  assert.strictEqual(api.state.htmlTiles[0].html, "<b>Locked</b>");
+});
+
+test("custom-card polling defers while an editor is open", () => {
+  const { api, context } = createAppHarness();
+  api.applyEmbedConfigFromData({
+    config: { embedCards: [{ id: "e_one", title: "One", url: "https://one.example", size: "tall" }] },
+  }, { allowDuringReorder: true });
+  context.__MLD.embedEditorOpen = true;
+
+  const changed = api.applyEmbedConfigFromData({
+    config: { embedCards: [{ id: "e_two", title: "Two", url: "https://two.example", size: "wide" }] },
+  });
+
+  assert.strictEqual(changed, false);
+  assert.deepStrictEqual(plain(api.state.embedCards).map((card) => card.id), ["e_one"]);
+});
+
 test("fetchData applies dashboard configuration and invokes extension hooks", async () => {
   const { api, context } = createAppHarness({ search: "?access_token=abc" });
   const calls = [];

@@ -28,6 +28,8 @@ export function createSimpleDeviceFeature({ state, services, ui }) {
     let device;
     if (name === "switch" && (device = state.outlets?.find((item) => item.i === id))) {
       device.s = event.value === "on" ? 1 : 0;
+      if (ui.clearOptimistic) ui.clearOptimistic("switch", id);
+      else state.switchOptimistic?.delete(id);
     } else if (name === "lock" && (device = state.locks?.find((item) => item.i === id))) {
       device.st = String(event.value || "");
       device.lk = device.st === "locked" ? 1 : 0;

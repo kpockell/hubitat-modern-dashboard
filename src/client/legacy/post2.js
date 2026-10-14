@@ -3043,7 +3043,8 @@
       services: runtime.services,
       ui: {
         clearOptimistic(type, id) {
-          if (type === "lock") clearLockOptimistic(id);
+          if (type === "switch") clearSwitchOptimistic(id);
+          else if (type === "lock") clearLockOptimistic(id);
           else if (type === "garage") clearGarageOptimistic(id);
           else if (type === "valve") clearValveOptimistic(id);
         },

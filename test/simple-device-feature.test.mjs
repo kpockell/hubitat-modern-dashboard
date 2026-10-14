@@ -8,22 +8,31 @@ function fixture(result = { ok: true }) {
     locks: [{ i: 2, lk: 0, st: "unlocked" }],
     garageDoors: [{ i: 3, st: "closed" }],
     valves: [{ i: 4, st: "closed" }],
+    switchOptimistic: new Map(),
     lockOptimistic: new Map(),
     garageOptimistic: new Map(),
     valveOptimistic: new Map(),
   };
   const renders = [];
   const commands = [];
+  const cleared = [];
   const feature = createSimpleDeviceFeature({
     state,
     services: { transport: { async sendCommand(...args) { commands.push(args); return result; } } },
-    ui: { renderSimpleDevices: (snapshot, reason) => renders.push([snapshot, reason]) },
+    ui: {
+      clearOptimistic(type, id) {
+        cleared.push([type, id]);
+        state[`${type}Optimistic`]?.delete(id);
+      },
+      renderSimpleDevices: (snapshot, reason) => renders.push([snapshot, reason]),
+    },
   });
-  return { feature, state, renders, commands };
+  return { feature, state, renders, commands, cleared };
 }
 
 test("initial render and Hubitat events update each simple-device collection", () => {
-  const { feature, state, renders } = fixture();
+  const { feature, state, renders, cleared } = fixture();
+  state.switchOptimistic.set(1, { s: 1 });
   state.lockOptimistic.set(2, { lk: 1, st: "locking" });
   state.garageOptimistic.set(3, { st: "opening" });
   state.valveOptimistic.set(4, { st: "open" });
@@ -39,9 +48,11 @@ test("initial render and Hubitat events update each simple-device collection", (
   assert.deepStrictEqual(state.locks[0], { i: 2, lk: 1, st: "locked" });
   assert.strictEqual(state.garageDoors[0].st, "opening");
   assert.strictEqual(state.valves[0].st, "open");
+  assert.strictEqual(state.switchOptimistic.size, 0);
   assert.strictEqual(state.lockOptimistic.size, 0);
   assert.strictEqual(state.garageOptimistic.size, 0);
   assert.strictEqual(state.valveOptimistic.size, 0);
+  assert.deepStrictEqual(cleared, [["switch", 1], ["lock", 2], ["garage", 3], ["valve", 4]]);
   assert.strictEqual(renders.length, 5);
   assert.strictEqual(feature.handleHubEvent({ source: "DEVICE", deviceId: 99, name: "switch", value: "on" }), false);
   assert.strictEqual(feature.handleHubEvent({ source: "LOCATION", name: "mode", value: "Away" }), false);

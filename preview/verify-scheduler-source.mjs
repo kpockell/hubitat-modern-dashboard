@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readClientSource } from "../lib/client-source.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const src = readFileSync(join(root, "app/ModernLightsDashboard.groovy.template"), "utf8");
@@ -134,7 +135,7 @@ assert(/def schedulesTest[\s\S]*\[ok: ok, lastResult: lastResult\]/.test(src), "
   assert(fmt && fmt[0].includes("setTimeZone(tz)"), "one-time summary formatter must use hub timezone");
 }
 
-const js = readFileSync(join(root, "src/app.js"), "utf8");
+const js = readClientSource(root);
 assert(js.includes("schedulesLoadState"), "UI must track schedule load state");
 assert(js.includes("schedulesCloudOmitted"), "UI must refetch when cloud /data omits schedules");
 assert(!js.includes("schedulesLoadedFromHub"), "removed leftover schedulesLoadedFromHub global");

@@ -1,13 +1,11 @@
-import assert from "node:assert/strict";
 import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import vm from "vm";
 import { fileURLToPath } from "url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const appPath = join(root, "src", "app.js");
+const appPath = join(root, "src", "client", "legacy", "bootstrap.js");
 const prePath = join(root, "src", "app-pre.js");
-const splitMarker = "// __MLD_SPLIT_CORE__";
 
 const exposedFunctions = [
   "loadHapticsPref", "saveHapticsPref", "loadNotifSoundPref", "saveNotifSoundPref",
@@ -92,10 +90,8 @@ export function createAppHarness({ storage: initialStorage = {}, search = "" } =
   new vm.Script(readFileSync(prePath, "utf8"), { filename: prePath }).runInContext(context);
 
   const source = readFileSync(appPath, "utf8");
-  const splitAt = source.indexOf(splitMarker);
-  assert.notStrictEqual(splitAt, -1, "app.js core split marker must exist");
   const functions = exposedFunctions.join(", ");
-  const instrumented = source.slice(0, splitAt) + `
+  const instrumented = source + `
   Object.assign(globalThis.__APP_TEST__, { ${functions},
     state: {
       cfg, devices, locks, garageDoors, windowShades, ceilingFans, valves, music, thermostats,

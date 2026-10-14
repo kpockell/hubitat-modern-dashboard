@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import * as esbuild from "esbuild";
 import { zipSync } from "fflate";
 import { iconBase64, createIconPng } from "./lib/pwa-icons.mjs";
+import { CLIENT_CHUNK_NAMES } from "./lib/client-source.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = __dirname;
@@ -20,10 +21,7 @@ const upload = join(dist, "upload");
 const staging = join(dist, "bundle-staging");
 const hubitat = join(root, "hubitat");
 
-const MLD_SPLIT_CORE = "// __MLD_SPLIT_CORE__";
-const MLD_SPLIT = "// __MLD_SPLIT__";
-const MLD_SPLIT2 = "// __MLD_SPLIT2__";
-const MLD_SPLIT3 = "// __MLD_SPLIT3__";
+const LEGACY_JS_CHUNKS = CLIENT_CHUNK_NAMES.map((name) => `${name}.js`);
 // File Manager's documented ceiling is ~124 KB, but uploads near that size have
 // truncated in practice. Keep a 120 KB safety cap so local blobs actually load.
 const HUB_MAX_BLOB = 120 * 1024;
@@ -358,31 +356,12 @@ function wrapPostChunk(body, exportIds, priorMissingMsg) {
   return `(() => {\n  "use strict";\n  const M = globalThis.__MLD;\n  if (!M) {\n    console.error("Modern Dashboard: ${priorMissingMsg}");\n    return;\n  }\n${assign}${rewritten}})();\n`;
 }
 
-function splitAppJs(srcPath) {
-  const raw = readFileSync(srcPath, "utf8");
-  const splitCoreIdx = raw.indexOf(MLD_SPLIT_CORE);
-  if (splitCoreIdx < 0) throw new Error(`Missing ${MLD_SPLIT_CORE} in src/app.js`);
-  const split1Idx = raw.indexOf(MLD_SPLIT);
-  if (split1Idx < 0 || split1Idx <= splitCoreIdx) {
-    throw new Error(`Missing ${MLD_SPLIT} after ${MLD_SPLIT_CORE} in src/app.js`);
-  }
-  const split2Idx = raw.indexOf(MLD_SPLIT2);
-  if (split2Idx < 0 || split2Idx <= split1Idx) {
-    throw new Error(`Missing ${MLD_SPLIT2} after ${MLD_SPLIT} in src/app.js`);
-  }
-  const split3Idx = raw.indexOf(MLD_SPLIT3);
-  if (split3Idx < 0 || split3Idx <= split2Idx) {
-    throw new Error(`Missing ${MLD_SPLIT3} after ${MLD_SPLIT2} in src/app.js`);
-  }
-
-  const part1Lines = raw.slice(0, splitCoreIdx).trimEnd().split("\n");
+function splitAppJs(srcDir) {
   const trimLeadingBlankLines = (s) => s.replace(/^(?:\s*\n)+/, "");
-  let partCoreLines = trimLeadingBlankLines(
-    raw.slice(splitCoreIdx + MLD_SPLIT_CORE.length, split1Idx)
-  ).split("\n");
-  let part2Lines = trimLeadingBlankLines(raw.slice(split1Idx + MLD_SPLIT.length, split2Idx)).split("\n");
-  let part3Lines = trimLeadingBlankLines(raw.slice(split2Idx + MLD_SPLIT2.length, split3Idx)).split("\n");
-  let part4Lines = trimLeadingBlankLines(raw.slice(split3Idx + MLD_SPLIT3.length)).split("\n");
+  const readChunkLines = (name) =>
+    trimLeadingBlankLines(readFileSync(join(srcDir, name), "utf8")).trimEnd().split("\n");
+  const [part1Lines, partCoreLines, part2Lines, part3Lines, part4Lines] =
+    LEGACY_JS_CHUNKS.map(readChunkLines);
 
   const trimTrailing = (lines) => {
     while (lines.length && lines[lines.length - 1].trim() === "") lines.pop();
@@ -467,7 +446,7 @@ function assertUnderHubLimit(label, content) {
   const size = typeof content === "number" ? content : byteSize(content);
   if (size >= HUB_MAX_BLOB) {
     throw new Error(
-      `${label} is ${size} bytes (limit ${HUB_MAX_BLOB} / 120 KB). Split src/app.js further or trim the asset.`
+      `${label} is ${size} bytes (limit ${HUB_MAX_BLOB} / 120 KB). Rebalance the client chunks or trim the asset.`
     );
   }
 }
@@ -624,7 +603,8 @@ for (const size of [192, 512, 1024]) {
   writeFileSync(join(upload, `mld-icon-${size}-${pkg.version}.png`), createIconPng(size));
 }
 
-const { part1Out, partCoreOut, part2Out, part3Out, part4Out } = splitAppJs(join(root, "src", "app.js"));
+const { part1Out, partCoreOut, part2Out, part3Out, part4Out } =
+  splitAppJs(join(root, "src", "client", "legacy"));
 const appPre = readFileSync(join(root, "src", "app-pre.js"), "utf8").trimEnd();
 const part1Merged = `${appPre}\n${part1Out}`;
 

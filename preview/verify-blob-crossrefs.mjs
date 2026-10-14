@@ -7,16 +7,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { execFileSync } from "node:child_process";
+import { readClientChunks } from "../lib/client-source.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const upload = join(root, "dist", "upload");
-const srcApp = join(root, "src", "app.js");
 const srcPre = join(root, "src", "app-pre.js");
-
-const MLD_SPLIT_CORE = "// __MLD_SPLIT_CORE__";
-const MLD_SPLIT = "// __MLD_SPLIT__";
-const MLD_SPLIT2 = "// __MLD_SPLIT2__";
-const MLD_SPLIT3 = "// __MLD_SPLIT3__";
 
 const CHUNKS = [
   "mld-app.js",
@@ -152,21 +147,8 @@ function isAllowedForwardRef(partSource, symbol) {
 }
 
 function splitSourceParts() {
-  const raw = readFileSync(srcApp, "utf8");
-  const splitCoreIdx = raw.indexOf(MLD_SPLIT_CORE);
-  const split1Idx = raw.indexOf(MLD_SPLIT);
-  const split2Idx = raw.indexOf(MLD_SPLIT2);
-  const split3Idx = raw.indexOf(MLD_SPLIT3);
-  if (splitCoreIdx < 0 || split1Idx < 0 || split2Idx < 0 || split3Idx < 0) {
-    throw new Error("Missing split markers in src/app.js");
-  }
-  return {
-    part1: raw.slice(0, splitCoreIdx),
-    core: raw.slice(splitCoreIdx + MLD_SPLIT_CORE.length, split1Idx),
-    post: raw.slice(split1Idx + MLD_SPLIT.length, split2Idx),
-    post2: raw.slice(split2Idx + MLD_SPLIT2.length, split3Idx),
-    post3: raw.slice(split3Idx + MLD_SPLIT3.length),
-  };
+  const chunks = readClientChunks(root);
+  return { part1: chunks.bootstrap, ...chunks };
 }
 
 function auditSourceCrossRefs() {

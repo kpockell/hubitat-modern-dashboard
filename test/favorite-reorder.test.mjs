@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 function loadFavoriteReorderPlaceholderIndex() {
-  const src = readFileSync(join(root, "src/app.js"), "utf8");
+  const src = readFileSync(join(root, "src/client/legacy/post2.js"), "utf8");
   const start = src.indexOf("function favoriteReorderPlaceholderIndex(");
-  if (start < 0) throw new Error("favoriteReorderPlaceholderIndex missing from src/app.js");
+  if (start < 0) throw new Error("favoriteReorderPlaceholderIndex missing from legacy post2 source");
   const brace = src.indexOf("{", start);
   let depth = 0;
   let end = brace;

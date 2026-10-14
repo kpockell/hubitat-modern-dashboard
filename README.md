@@ -749,7 +749,7 @@ reliably serve binary PNGs from File Manager.
 | Cloud-critical JS: `mld-app.js`, `mld-app-post2.js`, `mld-app-post3.js` | **118 KB** | Hubitat Cloud OAuth/MQTT; oversized → blank cloud dashboard / missing icons |
 
 When a chunk approaches its limit, move code across the `__MLD_SPLIT*` markers in
-`src/app.js` (or CSS into `src/styles.css`). Do not raise these caps.
+`src/client/legacy/` (or CSS into `src/styles.css`). Do not raise these caps.
 
 ### File Manager assets (exact names)
 

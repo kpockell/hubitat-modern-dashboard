@@ -3907,6 +3907,7 @@
 
   globalThis.__MLD.ensureSimpleDeviceFeature?.();
   globalThis.__MLD.ensureEnvironmentMediaFeature?.();
+  globalThis.__MLD.ensureNotificationsTriggersFeature?.();
   Object.assign(globalThis.__MLD, { applySchedulesFromData, schedulerHasContent, schedulerResponseEpoch, renderSchedulerView });
   globalThis.__MLD.updateQuickNavVisibility?.();
 

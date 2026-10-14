@@ -56,6 +56,7 @@ function fixture(overrides = {}) {
     notificationsChanged: () => calls.push(["notifications"]),
     tileNotificationsChanged: () => calls.push(["tiles"]),
     pruneNotificationLocalState: (alive) => calls.push(["prune", [...alive]]),
+    notificationAcknowledged: (id) => calls.push(["acknowledged", id]),
     syncArmed: (armed) => calls.push(["armed", armed]),
     stopTone: () => calls.push(["stop-tone"]),
     playTone: (tone) => calls.push(["tone", tone]),
@@ -115,8 +116,13 @@ test("tile notification payloads sort newest first and ignore unrelated data", (
 
 test("trigger reconciliation prunes expired actions and dispatches newest camera and one tone", () => {
   const { feature, state, calls } = fixture();
+  const sourceIds = state.triggerSourceIds;
+  const actions = state.hubTriggerActions;
   state.hubNotifications.push({ id: "n1", text: "Front door" });
   state.playedTriggerToneIds.set("old", 999);
+  feature.applyTriggerControlsFromData({ triggerSourceIds: [12, "bad"] });
+  assert.strictEqual(state.hubTriggerActions, actions);
+  assert.deepEqual(state.hubTriggerActions, []);
   feature.applyTriggerActionsFromData({
     alertsArmed: true,
     alertsArmSwitchId: "13",
@@ -129,6 +135,8 @@ test("trigger reconciliation prunes expired actions and dispatches newest camera
     ],
   });
   assert.deepEqual(state.hubTriggerActions.map((action) => action.id), ["cam1", "cam2", "text"]);
+  assert.strictEqual(state.triggerSourceIds, sourceIds);
+  assert.deepEqual([...sourceIds], [12]);
   assert.equal(state.playedTriggerToneIds.has("old"), false);
   assert.ok(calls.some((call) => call[0] === "camera" && call[1] === "cam2" && call[2] === "Front door"));
   assert.deepEqual(calls.find((call) => call[0] === "tone"), ["tone", "alert"]);
@@ -197,6 +205,7 @@ test("acknowledgements apply server payloads, local fallbacks, and errors", asyn
   assert.deepEqual(state.hubNotifications, []);
   assert.deepEqual(state.hubTileNotifications, []);
   assert.deepEqual(state.hubTriggerActions, []);
+  assert.ok(calls.some((call) => call[0] === "acknowledged" && call[1] === "n"));
   assert.equal(calls.filter((call) => call[0] === "ack" && call[3]).length, 3);
 
   const rejected = fixture({ api: { acknowledge: async () => ({ ok: false, error: "denied" }) } });
@@ -224,7 +233,10 @@ test("acknowledgements apply server payloads, local fallbacks, and errors", asyn
   assert.deepEqual(payloads.state.hubTriggerActions, []);
 
   const failed = fixture({ api: { acknowledge: async () => { throw new Error("offline"); } } });
+  failed.state.hubTriggerActions.push({ id: "a", notificationId: "n" });
   assert.deepEqual(await failed.feature.acknowledgeTriggerAction("a"), { ok: false, error: "offline" });
+  assert.deepEqual(failed.state.hubTriggerActions, []);
+  assert.deepEqual(failed.errors, []);
 });
 
 test("arm updates cover success, rejection, and timeout", async () => {

@@ -1824,12 +1824,14 @@
   // Keep the legacy bindings and the temporary cross-chunk facade pointed at the
   // same collections while features migrate onto the controlled runtime store.
   const transportFacade = { fetchWithTimeout, getJson, sendCommand: sendCmd, sendBatch: sendCmdBatch };
+  const notificationTriggerState = { triggersEnabled, alertsArmed, alertsArmSwitchId };
   const runtime = createRuntime({ services: { session: sessionService, transport: transportFacade }, ui: { document } }, {
     cfg, rooms, devices, outlets, thermostats, tempSensors, sensors,
     hubModes, scenes, locks, garageDoors, windowShades, ceilingFans, valves, music, cameras,
     favorites, favoriteSizes, embedCards, timeCards, notificationCards, htmlTiles,
     htmlTileTitleOverrides, favoritesLayout, snapshots, hubNotifications,
-    hubTileNotifications, hubTriggerActions,
+    hubTileNotifications, hubTriggerActions, notificationDeviceIds, tileNotificationDeviceIds,
+    triggerSourceIds, playedTriggerToneIds, notificationTriggerState,
     levelOptimistic, switchOptimistic, lockOptimistic, garageOptimistic, shadeOptimistic,
     fanOptimistic, valveOptimistic, musicOptimistic, setpointOptimistic,
   });

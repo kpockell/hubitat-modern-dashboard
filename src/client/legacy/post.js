@@ -1333,16 +1333,21 @@
     scenesPopupEnabled = d.scenesPopupEnabled !== false;
     roomClimateEnabled = d.roomClimateEnabled !== false;
     schedulerEnabled = d.schedulerEnabled !== false;
-    if (d.triggersEnabled != null) triggersEnabled = !!d.triggersEnabled;
-    if (d.alertsArmed != null) applyAlertsArmed(!!d.alertsArmed);
-    if (d.alertsArmSwitchId != null) {
-      const n = Number(d.alertsArmSwitchId);
-      alertsArmSwitchId = Number.isFinite(n) ? n : null;
-    }
-    if (Array.isArray(d.triggerSourceIds)) {
-      triggerSourceIds = new Set(
-        d.triggerSourceIds.map((x) => Number(x)).filter((n) => Number.isFinite(n))
-      );
+    const notificationsFeature = postCall("ensureNotificationsTriggersFeature");
+    if (notificationsFeature) {
+      notificationsFeature.applyTriggerControlsFromData(d);
+    } else {
+      if (d.triggersEnabled != null) triggersEnabled = !!d.triggersEnabled;
+      if (d.alertsArmed != null) applyAlertsArmed(!!d.alertsArmed);
+      if (d.alertsArmSwitchId != null) {
+        const n = Number(d.alertsArmSwitchId);
+        alertsArmSwitchId = Number.isFinite(n) ? n : null;
+      }
+      if (Array.isArray(d.triggerSourceIds)) {
+        triggerSourceIds = new Set(
+          d.triggerSourceIds.map((x) => Number(x)).filter((n) => Number.isFinite(n))
+        );
+      }
     }
     unlockPinEnabled = !!d.unlockPinEnabled;
     unlockPinRequired = !!d.unlockPinRequired;
@@ -3407,6 +3412,12 @@
   }
 
   function applyNotificationsFromData(d) {
+    const feature = postCall("ensureNotificationsTriggersFeature");
+    if (feature) {
+      feature.applyNotificationsFromData(d);
+      feature.applyTileNotificationsFromData(d);
+      return;
+    }
     const list = Array.isArray(d?.notifications) ? d.notifications : [];
     hubNotifications = list.map((n) => ({
       id: n?.id != null ? String(n.id) : "",
@@ -3435,6 +3446,8 @@
   }
 
   function applyTileNotificationsFromData(d) {
+    const feature = postCall("ensureNotificationsTriggersFeature");
+    if (feature) return feature.applyTileNotificationsFromData(d);
     if (!d || (d.tileNotifications == null && d.tileNotificationDeviceIds == null)) return;
     const list = Array.isArray(d?.tileNotifications) ? d.tileNotifications : [];
     hubTileNotifications = list.map((n) => ({
@@ -3610,6 +3623,8 @@
   }
 
   async function fetchNotifications() {
+    const feature = postCall("ensureNotificationsTriggersFeature");
+    if (feature) return feature.fetchNotifications();
     if (isDashboardGateOpen()) return;
     if (notifFetchInFlight) {
       notifFetchQueued = true;
@@ -3656,6 +3671,8 @@
   }
 
   async function fetchTileNotifications() {
+    const feature = postCall("ensureNotificationsTriggersFeature");
+    if (feature) return feature.fetchTileNotifications();
     if (isDashboardGateOpen()) return;
     if (!notificationCards.length && !tileNotificationDeviceIds.size) return;
     if (notifTileFetchInFlight) {
@@ -3684,6 +3701,21 @@
   }
 
   async function acknowledgeTileNotification(id, dismissBtn) {
+    const feature = postCall("ensureNotificationsTriggersFeature");
+    if (feature) {
+      if (dismissBtn) {
+        dismissBtn.disabled = true;
+        dismissBtn.setAttribute("aria-busy", "true");
+      }
+      try {
+        return await feature.acknowledgeTileNotification(id);
+      } finally {
+        if (dismissBtn?.isConnected) {
+          dismissBtn.disabled = false;
+          dismissBtn.removeAttribute("aria-busy");
+        }
+      }
+    }
     if (!id || notifTileAckIds.has(id)) return;
     notifTileAckIds.add(id);
     if (dismissBtn) {
@@ -3723,6 +3755,8 @@
   }
 
   async function acknowledgeNotification(id) {
+    const feature = postCall("ensureNotificationsTriggersFeature");
+    if (feature) return feature.acknowledgeNotification(id);
     if (!id || notifAckInFlight) return;
     notifAckInFlight = true;
     const popup = ensureNotificationPopup();
@@ -3848,6 +3882,8 @@
   }
 
   function applyAlertsArmed(next) {
+    const feature = postCall("ensureNotificationsTriggersFeature");
+    if (feature) return feature.applyArmed(next);
     const on = !!next;
     if (alertsArmed && !on) stopAlertTone();
     alertsArmed = on;
@@ -3866,6 +3902,8 @@
   }
 
   function applyTriggerActionsFromData(d) {
+    const feature = postCall("ensureNotificationsTriggersFeature");
+    if (feature) return feature.applyTriggerActionsFromData(d);
     if (!d) return;
     if (d.triggersEnabled != null) triggersEnabled = !!d.triggersEnabled;
     if (d.alertsArmed != null) applyAlertsArmed(d.alertsArmed);
@@ -3934,6 +3972,8 @@
   }
 
   async function fetchTriggerActions() {
+    const feature = postCall("ensureNotificationsTriggersFeature");
+    if (feature) return feature.fetchTriggerActions();
     if (!triggersEnabled && hubTriggerActions.length === 0) return;
     if (isDashboardGateOpen()) return;
     if (triggerFetchInFlight) {
@@ -3969,6 +4009,8 @@
   }
 
   async function acknowledgeTriggerAction(id) {
+    const feature = postCall("ensureNotificationsTriggersFeature");
+    if (feature) return feature.acknowledgeTriggerAction(id);
     if (!id || triggerAckInFlight) return;
     triggerAckInFlight = true;
     try {
@@ -3989,6 +4031,12 @@
   }
 
   async function setAlertsArmed(armed) {
+    const feature = postCall("ensureNotificationsTriggersFeature");
+    if (feature) {
+      const result = await feature.setAlertsArmed(armed);
+      if (result?.ok) flash(result.alertsArmed ? "Trigger tones armed" : "Trigger tones shunted");
+      return result;
+    }
     try {
       const r = await fetch(withToken("alerts/arm"), {
         method: "POST",

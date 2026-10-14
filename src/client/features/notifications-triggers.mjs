@@ -81,6 +81,8 @@ export function createNotificationsTriggersFeature({ state, services, ui }) {
   }
 
   function captionFor(action) {
+    const caption = ui.captionForTriggerAction?.(action);
+    if (caption != null) return String(caption);
     if (!action) return "";
     if (action.caption) return String(action.caption);
     if (action.notificationId) {
@@ -96,7 +98,7 @@ export function createNotificationsTriggersFeature({ state, services, ui }) {
     }
   }
 
-  function applyTriggerActionsFromData(data) {
+  function applyTriggerControlsFromData(data, shouldRender = true) {
     if (!data) return false;
     if (data.triggersEnabled != null) controls.triggersEnabled = !!data.triggersEnabled;
     if (data.alertsArmed != null) applyArmed(data.alertsArmed);
@@ -105,7 +107,16 @@ export function createNotificationsTriggersFeature({ state, services, ui }) {
       controls.alertsArmSwitchId = Number.isFinite(id) ? id : null;
     }
     if (Array.isArray(data.triggerSourceIds)) replaceSet(triggerSourceIds, normalizeIds(data.triggerSourceIds));
-    if (!Array.isArray(data.triggerActions)) return false;
+    if (shouldRender) render("trigger-controls");
+    return true;
+  }
+
+  function applyTriggerActionsFromData(data) {
+    if (!applyTriggerControlsFromData(data, false)) return false;
+    if (!Array.isArray(data.triggerActions)) {
+      render("trigger-controls");
+      return false;
+    }
 
     const timestamp = now();
     prunePlayedTones(timestamp);
@@ -229,21 +240,33 @@ export function createNotificationsTriggersFeature({ state, services, ui }) {
     try {
       const result = await services.api.acknowledge(kind, id);
       if (!result?.ok) {
+        if (kind === "triggers") {
+          replaceList(state.hubTriggerActions, state.hubTriggerActions.filter((item) => item.id !== id));
+          render("acknowledge");
+          return result;
+        }
         ui.error?.(result?.error || "Could not mark as read");
         return result;
       }
       if (kind === "notifications") {
+        ui.notificationAcknowledged?.(id);
         if (Array.isArray(result.notifications)) applyNotificationsFromData({
           notifications: result.notifications,
           notificationDeviceIds: [...notificationIds],
         });
-        else replaceList(state.hubNotifications, state.hubNotifications.filter((item) => item.id !== id));
+        else {
+          replaceList(state.hubNotifications, state.hubNotifications.filter((item) => item.id !== id));
+          ui.notificationsChanged?.(state.hubNotifications);
+        }
       } else if (kind === "tiles") {
         if (Array.isArray(result.tileNotifications)) applyTileNotificationsFromData({
           tileNotifications: result.tileNotifications,
           tileNotificationDeviceIds: [...tileNotificationIds],
         });
-        else replaceList(state.hubTileNotifications, state.hubTileNotifications.filter((item) => item.id !== id));
+        else {
+          replaceList(state.hubTileNotifications, state.hubTileNotifications.filter((item) => item.id !== id));
+          ui.tileNotificationsChanged?.(state.hubTileNotifications);
+        }
       } else if (Array.isArray(result.triggerActions)) {
         applyTriggerActionsFromData(result);
       } else {
@@ -253,6 +276,11 @@ export function createNotificationsTriggersFeature({ state, services, ui }) {
       return result;
     } catch (error) {
       const result = { ok: false, error: error?.message || "request_failed" };
+      if (kind === "triggers") {
+        replaceList(state.hubTriggerActions, state.hubTriggerActions.filter((item) => item.id !== id));
+        render("acknowledge");
+        return result;
+      }
       ui.error?.(result.error);
       return result;
     } finally {
@@ -291,6 +319,7 @@ export function createNotificationsTriggersFeature({ state, services, ui }) {
     applyArmed,
     applyNotificationsFromData,
     applyTileNotificationsFromData,
+    applyTriggerControlsFromData,
     applyTriggerActionsFromData,
     fetchNotifications: () => runFetch("notifications"),
     fetchTileNotifications: () => runFetch("tiles"),

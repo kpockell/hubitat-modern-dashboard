@@ -24,6 +24,10 @@ function cloneList(list) {
   return list.map((item) => ({ ...item }));
 }
 
+function hasOwn(record, key) {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
 function signature(state) {
   return state.favoritesLayout.join(",")
     + "|" + state.embedCards.map((card) => `${card.id}:${card.size}:${card.url}`).join("|")
@@ -149,7 +153,7 @@ export function createFavoritesCustomCardsFeature({ state, services, ui }) {
       || (data.htmlZooms && typeof data.htmlZooms === "object");
     const zooms = config.htmlZooms && typeof config.htmlZooms === "object"
       ? config.htmlZooms : (data.htmlZooms || {});
-    const hasTitles = Object.hasOwn(config, "htmlTitles") || Object.hasOwn(data, "htmlTitles");
+    const hasTitles = hasOwn(config, "htmlTitles") || hasOwn(data, "htmlTitles");
     const titles = config.htmlTitles && typeof config.htmlTitles === "object"
       ? config.htmlTitles : (data.htmlTitles || {});
     const liveTitles = {};
@@ -194,10 +198,10 @@ export function createFavoritesCustomCardsFeature({ state, services, ui }) {
         size: EMBED_SIZE_PRESET_SET.has(String(sizeValue)) ? String(sizeValue) : "tall",
         zoom: normalizeHtmlZoom(zoomValue),
       };
-      if (Object.hasOwn(raw, "html")) tile.html = raw.html == null ? "" : String(raw.html);
+      if (hasOwn(raw, "html")) tile.html = raw.html == null ? "" : String(raw.html);
       else {
         const previous = state.htmlTiles.find((item) => item.id === parsed.id);
-        if (previous && Object.hasOwn(previous, "html")) tile.html = previous.html;
+        if (previous && hasOwn(previous, "html")) tile.html = previous.html;
       }
       if (raw.error != null && String(raw.error).trim()) tile.error = String(raw.error).trim();
       if (raw.roomsCss != null && String(raw.roomsCss).trim()) tile.roomsCss = String(raw.roomsCss);
@@ -357,6 +361,8 @@ export function createFavoritesCustomCardsFeature({ state, services, ui }) {
     render,
     handleHubEvent: () => false,
     applyHtmlTitleOverrides,
+    htmlTitleOverridesForLayout: (layout, overrides = state.htmlTileTitleOverrides) =>
+      htmlTitleOverridesForLayout(layout, overrides),
     applyHtmlCatalogFromData,
     applyEmbedConfigFromData,
     layoutSizePayloads: (layout) => favoriteLayoutSizePayloads(state, layout, services.normalizeDeviceSizes),

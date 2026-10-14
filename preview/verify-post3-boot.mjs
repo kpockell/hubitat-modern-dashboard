@@ -285,7 +285,7 @@ function auditPresentWithPost3() {
   else ok("post3 view functions exist after parser-load order");
 
   const featureNames = mld.runtime?.features?.names?.() || [];
-  for (const featureName of ["simple-devices", "environment-media", "notifications-triggers"]) {
+  for (const featureName of ["simple-devices", "environment-media", "notifications-triggers", "favorites-custom-cards"]) {
     if (!featureNames.includes(featureName)) fail(`${featureName} feature was not registered after post3 load`);
     else ok(`${featureName} feature registers after post3 load`);
   }

@@ -62,9 +62,12 @@ function fixture(overrides = {}) {
 }
 
 test("layout payloads retain per-type sizes, zooms, titles, and device order", () => {
-  const { state } = fixture();
+  const { feature, state } = fixture();
   assert.deepEqual(htmlTitleOverridesForLayout(state.favoritesLayout, state.htmlTileTitleOverrides), {
     "7:status": "Front Door",
+  });
+  assert.deepEqual(feature.htmlTitleOverridesForLayout(["h:7:status"], { "7:status": "Entry" }), {
+    "7:status": "Entry",
   });
   const payload = favoriteLayoutSizePayloads(
     state,

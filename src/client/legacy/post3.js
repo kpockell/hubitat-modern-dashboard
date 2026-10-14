@@ -3908,6 +3908,7 @@
   globalThis.__MLD.ensureSimpleDeviceFeature?.();
   globalThis.__MLD.ensureEnvironmentMediaFeature?.();
   globalThis.__MLD.ensureNotificationsTriggersFeature?.();
+  globalThis.__MLD.ensureFavoritesCustomCardsFeature?.();
   Object.assign(globalThis.__MLD, { applySchedulesFromData, schedulerHasContent, schedulerResponseEpoch, renderSchedulerView });
   globalThis.__MLD.updateQuickNavVisibility?.();
 

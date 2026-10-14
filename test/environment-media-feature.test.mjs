@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createEnvironmentMediaFeature } from "../src/client/features/environment-media.mjs";
+import * as sensorDomain from "../src/client/domain/sensors.mjs";
 
 function fixture(commandResult = { ok: true }) {
   const state = {
@@ -22,6 +23,7 @@ function fixture(commandResult = { ok: true }) {
     state,
     services: {
       now: () => 1_000,
+      sensors: sensorDomain,
       transport: {
         async sendCommand(...args) {
           commands.push(args);
@@ -98,10 +100,15 @@ test("sensor events update primary, secondary, climate, and last-event state", (
 });
 
 test("unrelated Hubitat events are not claimed", () => {
-  const { feature } = fixture();
+  const { feature, state } = fixture();
   assert.equal(feature.handleHubEvent(null), false);
   assert.equal(feature.handleHubEvent({ source: "LOCATION", name: "mode", value: "Away" }), false);
   assert.equal(feature.handleHubEvent({ source: "DEVICE", deviceId: 999, name: "switch", value: "on" }), false);
+  assert.equal(feature.applyHubEvent(
+    { source: "DEVICE", deviceId: 1, name: "position", value: 50 },
+    ["sensor"],
+  ).handled, false);
+  assert.equal(state.windowShades[0].pos, 0);
 });
 
 test("commands retain optimistic success and roll back rejection", async () => {

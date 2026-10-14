@@ -1,5 +1,3 @@
-import { applySensorLiveAttr } from "../domain/sensors.mjs";
-
 const SNAPSHOT_COLLECTIONS = ["windowShades", "ceilingFans", "music", "tempSensors", "sensors"];
 
 function snapshot(state) {
@@ -38,15 +36,17 @@ function restore(target, previous) {
 
 export function createEnvironmentMediaFeature({ state, services, ui }) {
   const now = typeof services.now === "function" ? services.now : Date.now;
+  const sensors = services.sensors;
   const render = (reason = "render", kind = "all", device = null) =>
     ui.renderEnvironmentMedia?.(snapshot(state), reason, kind, device);
 
-  function applyHubEvent(event) {
+  function applyHubEvent(event, allowedKinds = null) {
     if (event?.source !== "DEVICE" || event.deviceId == null) return { handled: false, passthrough: false };
+    const allows = (kind) => !allowedKinds || allowedKinds.includes(kind);
     const id = Number(event.deviceId);
     const name = String(event.name || "");
     const shade = findById(state.windowShades, id);
-    if (shade && ["windowShade", "windowBlind", "position", "level", "switch"].includes(name)) {
+    if (allows("shade") && shade && ["windowShade", "windowBlind", "position", "level", "switch"].includes(name)) {
       const optimistic = state.shadeOptimistic?.get(id);
       if (!optimistic || optimistic.until <= now()) applyShadeEvent(shade, name, event.value);
       render("hub-event", "shade", shade);
@@ -54,7 +54,7 @@ export function createEnvironmentMediaFeature({ state, services, ui }) {
     }
 
     const fan = findById(state.ceilingFans, id);
-    if (fan) {
+    if (allows("fan") && fan) {
       const optimistic = state.fanOptimistic?.get(id);
       if (optimistic && optimistic.until > now()) {
         return { handled: true, passthrough: false, kind: "fan" };
@@ -72,8 +72,8 @@ export function createEnvironmentMediaFeature({ state, services, ui }) {
       return { handled: true, passthrough: false, kind: "fan" };
     }
 
-    if (findById(state.tempSensors, id) || findById(state.sensors, id)) {
-      const result = applySensorLiveAttr(state, id, name, event.value, event.unit, now);
+    if (allows("sensor") && (findById(state.tempSensors, id) || findById(state.sensors, id))) {
+      const result = sensors.applySensorLiveAttr(state, id, name, event.value, event.unit, now);
       if (!result.changed) return { handled: true, passthrough: false, kind: "sensor" };
       if (result.climate) ui.renderClimate?.();
       render("hub-event", "sensor", result.sensor || result.tempSensor);

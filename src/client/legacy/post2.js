@@ -3060,6 +3060,51 @@
     return simpleDeviceFeature;
   }
 
+  let environmentMediaFeature = null;
+  function ensureEnvironmentMediaFeature() {
+    if (environmentMediaFeature || !globalThis.MLDFeatures?.createEnvironmentMediaFeature) {
+      return environmentMediaFeature;
+    }
+    environmentMediaFeature = registerFeature("environment-media", MLDFeatures.createEnvironmentMediaFeature({
+      state: runtime.state,
+      services: { ...runtime.services, now: Date.now, sensors: MLDDomain },
+      ui: {
+        applyOptimistic(collection, id, patch) {
+          if (collection === "ceilingFans") setFanOptimistic(id, patch);
+          else if (collection === "music") setMusicOptimistic(id, patch);
+        },
+        rollbackOptimistic(collection, id) {
+          if (collection === "ceilingFans") clearFanOptimistic(id);
+          else if (collection === "music") clearMusicOptimistic(id);
+        },
+        reconcile(collection, id) {
+          if (collection === "ceilingFans") reconcileFan(id);
+          else if (collection === "music") reconcileMusic(id);
+        },
+        renderClimate() {
+          updateClimateWidgets();
+          updateRoomMeta();
+        },
+        renderEnvironmentMedia(_snapshot, _reason, kind, device) {
+          if (kind === "shade") refreshShadeViews();
+          else if (kind === "fan") {
+            updateFanTile(device);
+            if (currentCategory() === "favorites") postCall("refreshFavoritesPopup");
+          } else if (kind === "sensor") {
+            refreshSensorViews();
+          } else if (kind === "ceilingFans") {
+            updateFanTile(device);
+            if (currentCategory() === "favorites") postCall("refreshFavoritesPopup");
+          } else if (kind === "music") {
+            if (currentCategory() === "music") renderMusicPopup();
+            else if (currentCategory() === "favorites") postCall("refreshFavoritesPopup");
+          }
+        },
+      },
+    }));
+    return environmentMediaFeature;
+  }
+
   // Hubitat event application remains feature-specific; socket ownership and
   // lifecycle are delegated to the injected transport controller below.
   function handleWsMessage(ev) {
@@ -3109,12 +3154,17 @@
         if (triggerSourceIds.has(deviceId)) {
           postCall("scheduleTriggerFetchFromWs");
         }
-        const shade = windowShades.find(x => x.i === deviceId);
-        const shadeName = String(m.name || "");
-        const shadeEvt = shade && (shadeName === "windowShade" || shadeName === "windowBlind" || shadeName === "position" || shadeName === "level" || shadeName === "switch");
-        if (shadeEvt && applyShadeWsEvent(shade, shadeName, m.value)) {
-          refreshShadeViews();
-          if (shadeName !== "switch" && shadeName !== "level") return;
+        const environmentFeature = ensureEnvironmentMediaFeature();
+        const shadeResult = environmentFeature?.applyHubEvent(m, ["shade"]);
+        if (shadeResult?.handled && !shadeResult.passthrough) return;
+        if (!environmentFeature) {
+          const shade = windowShades.find(x => x.i === deviceId);
+          const shadeName = String(m.name || "");
+          const shadeEvt = shade && (shadeName === "windowShade" || shadeName === "windowBlind" || shadeName === "position" || shadeName === "level" || shadeName === "switch");
+          if (shadeEvt && applyShadeWsEvent(shade, shadeName, m.value)) {
+            refreshShadeViews();
+            if (shadeName !== "switch" && shadeName !== "level") return;
+          }
         }
         const rec = devMap.get(deviceId) || favDevMap.get(deviceId);
         if (rec && !rec.isOutlet) {
@@ -3157,23 +3207,26 @@
           return;
         }
         if (ensureSimpleDeviceFeature()?.handleHubEvent(m)) return;
-        const fan = ceilingFans.find(x => x.i === Number(m.deviceId));
-        if (fan) {
-          const name = String(m.name || "");
-          const opt = fanOptimistic.get(fan.i);
-          if (opt && opt.until > Date.now()) return;
-          if (name === "switch") {
-            fan.s = (m.value === "on") ? 1 : 0;
-            if (fan.s === 0) fan.sp = "off";
-          } else if (name === "speed") {
-            fan.sp = String(m.value || "");
-            const sp = fan.sp.toLowerCase();
-            if (sp === "off") fan.s = 0;
-            else if (sp) fan.s = 1;
-          } else return;
-          updateFanTile(fan);
-          if (currentCategory() === "favorites") postCall("refreshFavoritesPopup");
-          return;
+        if (environmentFeature?.applyHubEvent(m, ["fan"]).handled) return;
+        if (!environmentFeature) {
+          const fan = ceilingFans.find(x => x.i === Number(m.deviceId));
+          if (fan) {
+            const name = String(m.name || "");
+            const opt = fanOptimistic.get(fan.i);
+            if (opt && opt.until > Date.now()) return;
+            if (name === "switch") {
+              fan.s = (m.value === "on") ? 1 : 0;
+              if (fan.s === 0) fan.sp = "off";
+            } else if (name === "speed") {
+              fan.sp = String(m.value || "");
+              const sp = fan.sp.toLowerCase();
+              if (sp === "off") fan.s = 0;
+              else if (sp) fan.s = 1;
+            } else return;
+            updateFanTile(fan);
+            if (currentCategory() === "favorites") postCall("refreshFavoritesPopup");
+            return;
+          }
         }
         // thermostat / sensor events
         const t = thermostats.find(x => x.i === Number(m.deviceId));
@@ -3202,11 +3255,14 @@
           refreshOpenTstatQuickPopups();
           return;
         }
-        const s = tempSensors.find(x => x.i === Number(m.deviceId));
-        const sen = sensors.find(x => x.i === Number(m.deviceId));
-        if (s || sen) {
-          if (applySensorLiveAttr(m.deviceId, m.name, m.value, m.unit)) refreshSensorViews();
-          return;
+        if (environmentFeature?.applyHubEvent(m, ["sensor"]).handled) return;
+        if (!environmentFeature) {
+          const s = tempSensors.find(x => x.i === Number(m.deviceId));
+          const sen = sensors.find(x => x.i === Number(m.deviceId));
+          if (s || sen) {
+            if (applySensorLiveAttr(m.deviceId, m.name, m.value, m.unit)) refreshSensorViews();
+            return;
+          }
         }
       } catch {}
   }

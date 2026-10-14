@@ -78,59 +78,8 @@ const SENSOR_TYPE_META = {
 const SENSOR_ALERT_WORDS = { wet: 1, open: 1, active: 1, detected: 1, present: 1 };
 
 const SECONDARY_ATTR_ORDER = ["temperature", "humidity", "illuminance", "pressure", "co2", "carbonmonoxide"];
-const SENSOR_EX_MAX = 6;
 const SENSOR_ALERT_TYPES = new Set(["smoke", "leak", "contact", "motion", "presence", "shock"]);
 const SENSOR_LAST_EVENT_TYPES = new Set(["smoke", "leak", "contact", "motion", "presence", "shock"]);
-const SENSOR_TEMP_PROMOTE_TYPES = new Set(["humidity", "illuminance"]);
-
-const SENSOR_CARDWORTHY_EX_ATTRS = new Set(["battery", ...SECONDARY_ATTR_ORDER]);
-const SENSOR_SKIP_ATTRS = new Set([
-  "lastupdate", "lastevent", "epevent", "devicewatch-devicestatus", "checkinterval", "status", "name",
-  "switch", "power", "energy", "rssi", "lqi", "lastactivity", "lastopened", "lastclosed", "datatype", "level", "healthstatus",
-  "tamper", "enrollment", "encap", "destinationendpoint", "cluster", "fccdeviceclass", "firmware",
-  "hardware", "software", "supportedthermostatmodes", "supportedfanmodes",
-]);
-
-function sensorExKeyAllowed(key, sensorType) {
-  const k = String(key || "").toLowerCase();
-  if (!k) return false;
-  if (sensorType === "generic") return !SENSOR_SKIP_ATTRS.has(k);
-  return SENSOR_CARDWORTHY_EX_ATTRS.has(k);
-}
-
-function filterSensorExForType(ex, sensorType) {
-  return (ex || []).filter((e) => e && sensorExKeyAllowed(e.k, sensorType));
-}
-
-
-const SENSOR_EX_KEY_TO_FILTER_TYPE = {
-  temperature: "temp",
-  humidity: "humidity",
-  illuminance: "illuminance",
-  motion: "motion",
-  contact: "contact",
-  water: "leak",
-  smoke: "smoke",
-  presence: "presence",
-  acceleration: "shock",
-  shock: "shock",
-  vibration: "shock",
-};
-
-function sensorCardFilterTypes(dev) {
-  const types = new Set();
-  const add = (t) => {
-    if (t && SENSOR_TYPE_META[t]) types.add(t);
-  };
-  add(dev.t);
-  add(dev._senRef?.t);
-  if (dev._tempRef) add("temp");
-  for (const e of dev.ex || []) {
-    const k = String(e.k || "").toLowerCase();
-    add(SENSOR_EX_KEY_TO_FILTER_TYPE[k] || (SENSOR_TYPE_META[k] ? k : null));
-  }
-  return types;
-}
 
 function secondaryAttrRank(k) {
   const n = String(k || "").toLowerCase();
@@ -141,7 +90,7 @@ function secondaryAttrRank(k) {
 function sortSensorExForDisplay(ex, excludeKeys, sensorType) {
   const skip = new Set([...(excludeKeys || []), "battery"]);
   return (ex || [])
-    .filter((e) => e && !skip.has(String(e.k || "").toLowerCase()) && sensorExKeyAllowed(e.k, sensorType))
+    .filter((e) => e && !skip.has(String(e.k || "").toLowerCase()) && MLDDomain.sensorExKeyAllowed(e.k, sensorType))
     .slice()
     .sort((a, b) => {
       const ra = secondaryAttrRank(a.k) - secondaryAttrRank(b.k);
@@ -157,139 +106,6 @@ function sensorExFooterExcludeForType(t) {
   return [];
 }
 
-function mergeSensorExEntries(parts, excludeKeys) {
-  const exclude = new Set((excludeKeys || []).map((k) => String(k).toLowerCase()));
-  const out = [];
-  const seen = new Set();
-  for (const list of parts) {
-    for (const e of list || []) {
-      const k = String(e.k || "").toLowerCase();
-      if (!k || exclude.has(k) || seen.has(k)) continue;
-      seen.add(k);
-      out.push({ k: e.k, v: e.v, u: e.u ?? null });
-    }
-  }
-  return out;
-}
-
-function resolveMergedSensorBattery(tempRec, sensorRec, ex) {
-  const batEx = (ex || []).find((e) => e.k === "battery");
-  const bat = tempRec?.bat ?? sensorRec?.bat ?? (batEx ? batEx.v : null);
-  return bat != null && bat !== "" ? bat : null;
-}
-
-function tempPrimaryCardFromRec(tempRec) {
-  return {
-    i: tempRec.i,
-    n: tempRec.n,
-    r: tempRec.r,
-    t: "temp",
-    v: tempRec.temp,
-    u: tempRec.u,
-    a: 0,
-    ex: tempRec.ex || [],
-    bat: tempRec.bat ?? null,
-    _ref: tempRec,
-  };
-}
-
-function environmentalTempPrimaryCard(tempRec, sensorRec) {
-  const exclude = ["temperature"];
-  const exParts = [];
-  if (sensorRec.v != null && sensorRec.v !== "") {
-    exParts.push([{ k: sensorRec.t, v: sensorRec.v, u: sensorRec.u ?? null }]);
-  }
-  exParts.push(sensorRec.ex || [], tempRec.ex || []);
-  const ex = mergeSensorExEntries(exParts, exclude);
-  return {
-    i: tempRec.i,
-    n: tempRec.n || sensorRec.n,
-    r: tempRec.r ?? sensorRec.r,
-    t: "temp",
-    v: tempRec.temp,
-    u: tempRec.u,
-    a: 0,
-    ex,
-    bat: resolveMergedSensorBattery(tempRec, sensorRec, ex),
-    le: sensorRec.le ?? null,
-    _ref: tempRec,
-    _senRef: sensorRec,
-  };
-}
-
-function sensorPrimaryCard(sensorRec, tempRec) {
-  const exclude = sensorExFooterExcludeForType(sensorRec.t);
-  const exParts = [sensorRec.ex || []];
-  if (tempRec) {
-    exParts.push([{ k: "temperature", v: tempRec.temp, u: tempRec.u ?? null }]);
-    exParts.push(tempRec.ex || []);
-  }
-  const ex = mergeSensorExEntries(exParts, exclude);
-  return {
-    i: sensorRec.i,
-    n: sensorRec.n || tempRec?.n,
-    r: sensorRec.r ?? tempRec?.r,
-    t: sensorRec.t,
-    v: sensorRec.v,
-    a: sensorRec.a,
-    ex,
-    bat: resolveMergedSensorBattery(tempRec, sensorRec, ex),
-    le: sensorRec.le ?? null,
-    _ref: sensorRec,
-    _tempRef: tempRec || null,
-  };
-}
-
-function buildMergedSensorCard(tempRec, sensorRec) {
-  if (tempRec && sensorRec && SENSOR_TEMP_PROMOTE_TYPES.has(sensorRec.t)) {
-    return environmentalTempPrimaryCard(tempRec, sensorRec);
-  }
-  if (sensorRec) return sensorPrimaryCard(sensorRec, tempRec);
-  if (tempRec) return tempPrimaryCardFromRec(tempRec);
-  return null;
-}
-
-function syncTempSensorFromSensorEntry(tempRec, sensorRec) {
-  if (!tempRec || !sensorRec) return;
-  const tempEx = (sensorRec.ex || []).find((e) => e.k === "temperature");
-  if (tempEx?.v == null || tempEx.v === "") return;
-  tempRec.temp = Number(tempEx.v);
-}
-
-function sensorTemperatureReading(dev) {
-  if (dev?.temp != null && dev.temp !== "") {
-    const n = Number(dev.temp);
-    if (!isNaN(n)) return { temp: n, u: dev.u ?? null };
-  }
-  const ex = (dev?.ex || []).find((e) => String(e.k || "").toLowerCase() === "temperature");
-  if (ex?.v == null || ex.v === "") return null;
-  const n = Number(ex.v);
-  if (isNaN(n)) return null;
-  return { temp: n, u: ex.u ?? dev.u ?? null };
-}
-
-function climateSensorsByRoom(tempSensors, sensors) {
-  const map = new Map();
-  const dedicatedRooms = new Set();
-  const seenIds = new Set();
-  for (const s of tempSensors || []) {
-    const rid = normalizeRoomId(s.r);
-    if (!map.has(rid)) map.set(rid, []);
-    map.get(rid).push(s);
-    dedicatedRooms.add(rid);
-    seenIds.add(Number(s.i));
-  }
-  for (const s of sensors || []) {
-    if (seenIds.has(Number(s.i))) continue;
-    if (!sensorTemperatureReading(s)) continue;
-    const rid = normalizeRoomId(s.r);
-    if (dedicatedRooms.has(rid)) continue;
-    if (!map.has(rid)) map.set(rid, []);
-    map.get(rid).push(s);
-  }
-  return map;
-}
-
 function sensorTypeLabel(t) {
   return (SENSOR_TYPE_META[t] || SENSOR_TYPE_META.generic).label;
 }
@@ -301,76 +117,6 @@ function humanizeAttr(k) {
   const n = String(k || "").toLowerCase();
   if (map[n]) return map[n];
   return k ? (k.charAt(0).toUpperCase() + k.slice(1)) : "";
-}
-
-// Returns { hero, pill, alert } for a sensor device object.
-const SENSOR_PRIMARY_ATTRS = {
-  motion: new Set(["motion", "motionstatus"]),
-  shock: new Set(["acceleration", "shock", "vibration", "moving"]),
-  contact: new Set(["contact"]),
-  leak: new Set(["water"]),
-  presence: new Set(["presence"]),
-  humidity: new Set(["humidity", "relativehumidity"]),
-  illuminance: new Set(["illuminance"]),
-  smoke: new Set(["smoke", "carbonmonoxide"]),
-  valve: new Set(["valve"]),
-};
-
-function sensorIsPrimaryAttr(t, attrName) {
-  const set = SENSOR_PRIMARY_ATTRS[t];
-  if (!set) return false;
-  return set.has(String(attrName || "").toLowerCase());
-}
-
-function normalizeSensorWsValue(t, attr, val) {
-  if (val == null) return val;
-  const lower = String(val).trim().toLowerCase();
-  const attrL = String(attr || "").toLowerCase();
-  switch (t) {
-    case "motion":
-      if (lower === "on" || lower === "true") return "active";
-      if (lower === "off" || lower === "false") return "inactive";
-      return lower;
-    case "shock":
-      if (lower === "on" || lower === "true" || lower === "active") return "active";
-      if (lower === "off" || lower === "false" || lower === "inactive") return "inactive";
-      return lower;
-    case "contact":
-      if (lower === "on" || lower === "true") return "open";
-      if (lower === "off" || lower === "false") return "closed";
-      return lower;
-    case "leak":
-      if (lower === "true" || lower === "wet") return "wet";
-      if (lower === "false" || lower === "dry") return "dry";
-      return lower;
-    case "presence":
-      if (lower === "home" || lower === "true") return "present";
-      if (lower === "away" || lower === "false" || lower === "not home" || lower === "not present") return "not present";
-      return lower;
-    case "smoke":
-      if (lower === "tested" || lower === "monitored") return "clear";
-      if (attrL === "carbonmonoxide" && (lower === "detected" || lower === "co")) return "detected";
-      return lower;
-    default:
-      return val;
-  }
-}
-
-function sensorAlertFlag(t, v) {
-  const s = String(v || "").toLowerCase();
-  const alerts = { motion: ["active"], shock: ["active"], contact: ["open"], leak: ["wet"], smoke: ["detected"], presence: ["present"], valve: ["open"] };
-  return (alerts[t] || []).includes(s) ? 1 : 0;
-}
-
-function applySensorPayload(sen, d) {
-  if (d.t != null) sen.t = d.t;
-  if (d.v !== undefined) sen.v = d.v;
-  if (d.a != null) sen.a = d.a ? 1 : 0;
-  if (d.le != null) sen.le = Number(d.le);
-  if (Array.isArray(d.ex)) {
-    const t = d.t ?? sen.t ?? "generic";
-    sen.ex = filterSensorExForType(d.ex, t).map((e) => ({ k: e.k, v: e.v, u: e.u ?? null }));
-  }
 }
 
 function sensorLastEventFromRef(dev) {
@@ -426,76 +172,6 @@ function sensorCardFootText(dev, exFooterFn) {
   const ex = exFooterFn(dev);
   if (ex) parts.push(ex);
   return parts.join(" · ");
-}
-
-function applyTempSensorPayload(s, d) {
-  if (d.temp != null) s.temp = d.temp;
-  if (d.bat != null) s.bat = d.bat;
-  if (Array.isArray(d.ex)) {
-    s.ex = filterSensorExForType(d.ex, "temp").map((e) => ({ k: e.k, v: e.v, u: e.u ?? null }));
-  }
-}
-
-function applyTempSensorWsAttr(s, attrName, val, unit) {
-  const nm = String(attrName || "").toLowerCase();
-  if (nm === "temperature") {
-    const n = Number(val);
-    if (!isNaN(n)) s.temp = Math.round(n);
-    return true;
-  }
-  const key = nm === "relativehumidity" ? "humidity" : nm;
-  if (key === "battery") {
-    const n = Number(val);
-    if (!isNaN(n)) s.bat = Math.round(n);
-  }
-  if (!sensorExKeyAllowed(key, "temp")) return false;
-  const ex = s.ex || (s.ex = []);
-  let entry = ex.find((e) => e.k === key);
-  const stored = key === "battery" && !isNaN(Number(val)) ? Math.round(Number(val)) : val;
-  if (entry) {
-    entry.v = stored;
-    if (unit) entry.u = unit;
-    return true;
-  }
-  if (ex.length >= SENSOR_EX_MAX) return false;
-  ex.push({ k: key, v: stored, u: unit || null });
-  return true;
-}
-
-function applySensorWsAttr(sen, attrName, val, unit) {
-  const nm = String(attrName || "").toLowerCase();
-  const key = nm === "relativehumidity" ? "humidity" : nm;
-  const t = sen.t || "generic";
-  const lastEventAttrs = new Set(["lastactivity", "lastevent", "lastopened", "lastclosed"]);
-  if (lastEventAttrs.has(key) && SENSOR_LAST_EVENT_TYPES.has(t)) {
-    const ms = parseSensorEventTimeMsClient(val);
-    if (ms != null) {
-      sen.le = ms;
-      return true;
-    }
-    return false;
-  }
-  if (sensorExKeyAllowed(key, t) && (t === "generic" || !sensorIsPrimaryAttr(t, key))) {
-    const ex = sen.ex || (sen.ex = []);
-    let entry = ex.find((e) => e.k === key);
-    if (entry) {
-      entry.v = val;
-      if (unit) entry.u = unit;
-      return true;
-    }
-    if (ex.length < SENSOR_EX_MAX) {
-      ex.push({ k: key, v: val, u: unit || null });
-      return true;
-    }
-    return false;
-  }
-  if (sensorIsPrimaryAttr(t, key) || t === "generic") {
-    sen.v = t === "generic" ? val : normalizeSensorWsValue(t, key, val);
-    sen.a = sensorAlertFlag(t, sen.v);
-    if (SENSOR_LAST_EVENT_TYPES.has(t)) sen.le = Date.now();
-    return true;
-  }
-  return false;
 }
 
 function sensorDisplay(dev) {

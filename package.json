@@ -14,7 +14,7 @@
   "scripts": {
     "test": "npm run test:unit",
     "test:unit": "node --test \"test/**/*.test.mjs\"",
-    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=src/client/legacy/*.js --test-coverage-include=src/client/domain/*.mjs --test-coverage-include=src/client/runtime/*.mjs --test-coverage-include=src/client/transport/*.mjs --test-coverage-include=src/client/ui/*.mjs --test-coverage-include=src/client/features/*.mjs --test-coverage-lines=81 --test-coverage-branches=74 --test-coverage-functions=78 \"test/**/*.test.mjs\"",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=src/client/legacy/*.js --test-coverage-include=src/client/domain/*.mjs --test-coverage-include=src/client/runtime/*.mjs --test-coverage-include=src/client/transport/*.mjs --test-coverage-include=src/client/ui/*.mjs --test-coverage-include=src/client/features/*.mjs --test-coverage-lines=84 --test-coverage-branches=77 --test-coverage-functions=81 \"test/**/*.test.mjs\"",
     "test:contracts": "npm run verify:blobs && npm run verify:blob-crossrefs && npm run verify:post3-boot && npm run verify:auth && npm run verify:pwa && npm run verify:scheduler-source",
     "test:integration": "npm run verify:sensors && npm run verify:favorites && npm run verify:embeds && npm run verify:times && npm run verify:html && npm run verify:schedules && npm run verify:triggers",
     "test:all": "npm run test:unit && npm run test:coverage && npm run build && npm run test:contracts && npm run test:integration",

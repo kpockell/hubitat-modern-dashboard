@@ -284,6 +284,12 @@ function auditPresentWithPost3() {
   if (missing.length) fail(`after post3 load, missing: ${missing.join(", ")}`);
   else ok("post3 view functions exist after parser-load order");
 
+  const featureNames = mld.runtime?.features?.names?.() || [];
+  for (const featureName of ["simple-devices", "environment-media"]) {
+    if (!featureNames.includes(featureName)) fail(`${featureName} feature was not registered after post3 load`);
+    else ok(`${featureName} feature registers after post3 load`);
+  }
+
   const shadeErr = callAndCatch(() => mld.makeFavoriteEntryElement({
     type: "shade",
     dev: { i: 5001, n: "Shade", r: 1, st: "open", pos: 100, hasPos: 1, hasStop: 1 },

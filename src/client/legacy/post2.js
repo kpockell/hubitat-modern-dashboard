@@ -3247,6 +3247,30 @@
     return lightsColorSnapshotsFeature;
   }
 
+  let thermostatsFeature = null;
+  function ensureThermostatsFeature() {
+    if (thermostatsFeature || !globalThis.MLDFeatures?.createThermostatsFeature) {
+      return thermostatsFeature;
+    }
+    runtime.state.thermostats = thermostats;
+    thermostatsFeature = registerFeature("thermostats", MLDFeatures.createThermostatsFeature({
+      state: runtime.state,
+      services: runtime.services,
+      ui: {
+        isModeLocked: tstatModeLocked,
+        isFanModeLocked: tstatFanModeLocked,
+        isVaneLocked: tstatVaneLocked,
+        applySetpoints: applyTstatSetpoints,
+        renderThermostats() {
+          updateClimateWidgets();
+          updateRoomMeta();
+          refreshOpenTstatQuickPopups();
+        },
+      },
+    }));
+    return thermostatsFeature;
+  }
+
   let notificationsTriggersFeature = null;
   async function notificationTriggerRequest(path, method = "GET", body = null) {
     try {
@@ -3493,31 +3517,35 @@
           }
         }
         // thermostat / sensor events
-        const t = thermostats.find(x => x.i === Number(m.deviceId));
-        if (t) {
-          const name = String(m.name || "");
-          const val = m.value;
-          if (name === "thermostatMode" && !tstatModeLocked(t.i)) t.tm = val;
-          else if (name === "comfortMode" && !tstatModeLocked(t.i)) t.tm = val;
-          else if (name === "thermostatOperatingState" && !tstatModeLocked(t.i)) t.os = val;
-          else if (name === "heatingSetpoint") applyTstatSetpoints(t, { hsp: val });
-          else if (name === "coolingSetpoint") applyTstatSetpoints(t, { csp: val });
-          else if (name === "temperature") { const n = Number(val); if (!isNaN(n)) t.temp = Math.round(n); }
-          else if (name === "thermostatFanMode" && !tstatFanModeLocked(t.i)) {
-            t.fm = val;
-            if (t.hasCfs) t.cfs = val;
+        const thermostatFeature = ensureThermostatsFeature();
+        if (thermostatFeature?.applyHubEvent(m).handled) return;
+        if (!thermostatFeature) {
+          const t = thermostats.find(x => x.i === Number(m.deviceId));
+          if (t) {
+            const name = String(m.name || "");
+            const val = m.value;
+            if (name === "thermostatMode" && !tstatModeLocked(t.i)) t.tm = val;
+            else if (name === "comfortMode" && !tstatModeLocked(t.i)) t.tm = val;
+            else if (name === "thermostatOperatingState" && !tstatModeLocked(t.i)) t.os = val;
+            else if (name === "heatingSetpoint") applyTstatSetpoints(t, { hsp: val });
+            else if (name === "coolingSetpoint") applyTstatSetpoints(t, { csp: val });
+            else if (name === "temperature") { const n = Number(val); if (!isNaN(n)) t.temp = Math.round(n); }
+            else if (name === "thermostatFanMode" && !tstatFanModeLocked(t.i)) {
+              t.fm = val;
+              if (t.hasCfs) t.cfs = val;
+            }
+            else if (name === "comfortFanSpeed" && !tstatFanModeLocked(t.i)) {
+              t.cfs = val;
+              t.fm = val;
+            }
+            else if (name === "fanSpeed") t.fs = val;
+            else if (name === "vanePosition" && !tstatVaneLocked(t.i)) t.vp = val;
+            else return;
+            updateClimateWidgets();
+            updateRoomMeta();
+            refreshOpenTstatQuickPopups();
+            return;
           }
-          else if (name === "comfortFanSpeed" && !tstatFanModeLocked(t.i)) {
-            t.cfs = val;
-            t.fm = val;
-          }
-          else if (name === "fanSpeed") t.fs = val;
-          else if (name === "vanePosition" && !tstatVaneLocked(t.i)) t.vp = val;
-          else return;
-          updateClimateWidgets();
-          updateRoomMeta();
-          refreshOpenTstatQuickPopups();
-          return;
         }
         if (environmentFeature?.applyHubEvent(m, ["sensor"]).handled) return;
         if (!environmentFeature) {

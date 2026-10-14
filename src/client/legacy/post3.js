@@ -2394,40 +2394,11 @@
   // Hubitat may unwrap a one-item JSON array to a scalar (e.g. devices: 37).
   // Never iterate a string: [..."37"] / new Set("37") becomes ["3","7"].
   function schedIdList(raw) {
-    if (raw == null || raw === "") return [];
-    const arr = Array.isArray(raw) ? raw : [raw];
-    const out = [];
-    const seen = new Set();
-    for (const id of arr) {
-      if (id == null || id === "") continue;
-      if (typeof id === "object") continue;
-      const sid = String(id).trim();
-      if (!sid || sid === "null" || sid === "undefined") continue;
-      if (seen.has(sid)) continue;
-      seen.add(sid);
-      out.push(sid);
-    }
-    return out;
+    return globalThis.MLDDomain?.schedIdList?.(raw) || [];
   }
 
   function schedThermoThenBits(ac) {
-    const mode = String(ac.mode || "").trim();
-    const modeKey = mode.toLowerCase();
-    const bits = [];
-    const heat = ac.heat;
-    const cool = ac.cool;
-    if (modeKey === "off") bits.push("Off");
-    else if (modeKey === "cool") bits.push(cool != null && cool !== "" ? "Cool " + cool + "\u00b0" : "Cool");
-    else if (modeKey === "heat") bits.push(heat != null && heat !== "" ? "Heat " + heat + "\u00b0" : "Heat");
-    else {
-      if (modeKey === "auto") bits.push("Auto");
-      else if (mode) bits.push(mode.charAt(0).toUpperCase() + mode.slice(1));
-      if (heat != null && heat !== "") bits.push("Heat " + heat + "\u00b0");
-      if (cool != null && cool !== "") bits.push("Cool " + cool + "\u00b0");
-    }
-    const fan = String(ac.fanMode || "").trim();
-    if (fan && fan.toLowerCase() !== "auto") bits.push("Fan " + fan);
-    return bits;
+    return globalThis.MLDDomain?.schedThermoThenBits?.(ac) || [];
   }
 
   function schedActionDescription(action, catalogs) {

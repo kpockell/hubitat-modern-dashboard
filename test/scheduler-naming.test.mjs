@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readClientSource, readClientChunks } from "../lib/client-source.mjs";
+import { schedIdList as domainSchedIdList, schedThermoThenBits as domainSchedThermoThenBits } from "../src/client/domain/scheduler.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -306,6 +307,11 @@ function loadSchedActionDescription() {
   const end = src.indexOf("  function schedOnlyInModesList(");
   if (end < 0) throw new Error("schedOnlyInModesList missing from legacy post3 source");
   const fnSrc = src.slice(start, end);
+  globalThis.MLDDomain = {
+    ...(globalThis.MLDDomain || {}),
+    schedIdList: domainSchedIdList,
+    schedThermoThenBits: domainSchedThermoThenBits,
+  };
   return new Function(`${fnSrc}\nreturn { schedIdList, schedActionDescription };`)();
 }
 

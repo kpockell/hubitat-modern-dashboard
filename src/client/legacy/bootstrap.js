@@ -178,6 +178,8 @@
   const { createSessionService } = MLDTransport;
 
   function applyHtmlTitleOverridesFromConfig(source, liveTitlesById = null) {
+    const feature = postCall("ensureFavoritesCustomCardsFeature");
+    if (feature) return feature.applyHtmlTitleOverrides(source, liveTitlesById);
     const next = {};
     if (source && typeof source === "object") {
       for (const k of Object.keys(source)) {
@@ -194,6 +196,8 @@
   }
 
   function htmlTitleOverridesForLayout(layout = favoritesLayout, overrides = htmlTileTitleOverrides) {
+    const feature = postCall("ensureFavoritesCustomCardsFeature");
+    if (feature) return feature.htmlTitleOverridesForLayout(layout, overrides);
     const out = {};
     for (const key of layout || []) {
       if (!key.startsWith("h:")) continue;
@@ -227,6 +231,8 @@
   const { mapTimeCardsFromConfig, mapNotificationCardsFromConfig } = MLDDomain;
 
   function applyHtmlCatalogFromData(d) {
+    const feature = postCall("ensureFavoritesCustomCardsFeature");
+    if (feature) return feature.applyHtmlCatalogFromData(d);
     if (!Array.isArray(d?.htmlTiles)) return false;
     const hasHtmlSizes = !!(d.config?.htmlSizes && typeof d.config.htmlSizes === "object")
       || !!(d.htmlSizes && typeof d.htmlSizes === "object");
@@ -341,6 +347,8 @@
   }
 
   function applyEmbedConfigFromData(d, { allowDuringReorder = false } = {}) {
+    const feature = postCall("ensureFavoritesCustomCardsFeature");
+    if (feature) return feature.applyEmbedConfigFromData(d, { allowDuringReorder });
     if (!d?.config) return false;
     const editorOpen = embedEditorOpen || timeEditorOpen || htmlTitleEditorOpen
       || !!globalThis.__MLD?.embedEditorOpen

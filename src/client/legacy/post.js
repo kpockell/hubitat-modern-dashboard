@@ -289,8 +289,9 @@
           try {
             const body = await r.json();
             if (body?.sizes && typeof body.sizes === "object") {
-              favoriteSizes = {};
-              for (const k of Object.keys(body.sizes)) favoriteSizes[Number(k)] = String(body.sizes[k]);
+              const nextSizes = {};
+              for (const k of Object.keys(body.sizes)) nextSizes[Number(k)] = String(body.sizes[k]);
+              replaceMap(favoriteSizes, nextSizes);
               saveFavoriteSizesCache(favoriteSizes);
             }
             if (Array.isArray(body?.favoritesLayout) || Array.isArray(body?.embedCards) || Array.isArray(body?.timeCards) || Array.isArray(body?.notificationCards)) {
@@ -811,7 +812,7 @@
     if (!ok) {
       if (wasFav) favorites.push(numId);
       else favorites.splice(favorites.indexOf(numId), 1);
-      favoriteSizes = prevSizes;
+      replaceMap(favoriteSizes, prevSizes);
       saveFavoriteSizesCache(favoriteSizes);
       updateAllFavButtons();
       updateQuickNavVisibility();
@@ -3113,7 +3114,7 @@
         next[id] = size;
       }
     }
-    favoriteSizes = next;
+    replaceMap(favoriteSizes, next);
     const nextSig = Object.keys(next).sort((a, b) => a - b)
       .map((id) => id + ":" + next[id]).join(",");
     if (prevSig !== nextSig) saveFavoriteSizesCache(favoriteSizes);
@@ -3580,6 +3581,8 @@
   }
 
   async function notificationCardsApi(payload) {
+    const feature = postCall("ensureFavoritesCustomCardsFeature");
+    if (feature) return feature.mutateCard("notifications", payload);
     try {
       const r = await fetch(withToken("notification-cards"), {
         method: "POST",

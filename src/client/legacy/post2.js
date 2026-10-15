@@ -730,14 +730,18 @@
       flash("Add a favorite or tile first");
       return;
     }
-    favoritesReorderSnapshot = favorites.slice();
-    favoritesReorderSnapshotSizes = { ...favoriteSizes };
-    favoritesReorderSnapshotLayout = favoritesLayout.slice();
-    favoritesReorderSnapshotEmbeds = embedCards.map((c) => ({ ...c }));
-    favoritesReorderSnapshotTimes = timeCards.map((c) => ({ ...c }));
-    favoritesReorderSnapshotNotifs = notificationCards.map((c) => ({ ...c }));
-    favoritesReorderSnapshotHtml = htmlTiles.map((tile) => ({ ...tile }));
-    favoritesReorderSnapshotHtmlTitles = { ...htmlTileTitleOverrides };
+    const feature = ensureFavoritesCustomCardsFeature();
+    if (feature) feature.beginReorder();
+    else {
+      favoritesReorderSnapshot = favorites.slice();
+      favoritesReorderSnapshotSizes = { ...favoriteSizes };
+      favoritesReorderSnapshotLayout = favoritesLayout.slice();
+      favoritesReorderSnapshotEmbeds = embedCards.map((c) => ({ ...c }));
+      favoritesReorderSnapshotTimes = timeCards.map((c) => ({ ...c }));
+      favoritesReorderSnapshotNotifs = notificationCards.map((c) => ({ ...c }));
+      favoritesReorderSnapshotHtml = htmlTiles.map((tile) => ({ ...tile }));
+      favoritesReorderSnapshotHtmlTitles = { ...htmlTileTitleOverrides };
+    }
     favoritesReorderDraftOrder = null;
     favoritesReorderEls.clear();
     stopPolling();
@@ -818,8 +822,9 @@
       const body = await r.json();
       if (Array.isArray(body?.favorites)) replaceList(favorites, body.favorites.map(Number));
       if (body?.sizes && typeof body.sizes === "object") {
-        favoriteSizes = {};
-        for (const k of Object.keys(body.sizes)) favoriteSizes[Number(k)] = String(body.sizes[k]);
+        const nextSizes = {};
+        for (const k of Object.keys(body.sizes)) nextSizes[Number(k)] = String(body.sizes[k]);
+        replaceMap(favoriteSizes, nextSizes);
         saveFavoriteSizesCache(favoriteSizes);
       }
       applyHtmlCatalogFromData({ htmlTiles: htmlTiles.map((tile) => ({ ...tile })), config: body });
@@ -843,6 +848,8 @@
   }
 
   function favoriteLayoutSizePayloads(layout = favoritesLayout) {
+    const feature = ensureFavoritesCustomCardsFeature();
+    if (feature) return feature.layoutSizePayloads(layout);
     const deviceOrder = layout.filter((key) => key.startsWith("d:")).map((key) => Number(key.slice(2)));
     const embedSizes = {};
     const htmlSizes = {};
@@ -869,6 +876,8 @@
   }
 
   async function persistFavoriteLayout(layout) {
+    const feature = ensureFavoritesCustomCardsFeature();
+    if (feature) return feature.persistFavoriteLayout(layout);
     const sizes = favoriteLayoutSizePayloads(layout);
     return saveFavoritesLayoutApi(
       layout,
@@ -899,16 +908,19 @@
   }
 
   function cancelFavoritesReorderMode() {
-    if (favoritesReorderSnapshot) replaceList(favorites, favoritesReorderSnapshot);
-    if (favoritesReorderSnapshotSizes) favoriteSizes = { ...favoritesReorderSnapshotSizes };
-    else favoriteSizes = {};
-    if (favoritesReorderSnapshotLayout) replaceList(favoritesLayout, favoritesReorderSnapshotLayout.slice());
-    if (favoritesReorderSnapshotEmbeds) replaceList(embedCards, favoritesReorderSnapshotEmbeds.map((c) => ({ ...c })));
-    if (favoritesReorderSnapshotTimes) replaceList(timeCards, favoritesReorderSnapshotTimes.map((c) => ({ ...c })));
-    if (favoritesReorderSnapshotNotifs) replaceList(notificationCards, favoritesReorderSnapshotNotifs.map((c) => ({ ...c })));
-    if (favoritesReorderSnapshotHtml) replaceList(htmlTiles, favoritesReorderSnapshotHtml.map((tile) => ({ ...tile })));
-    if (favoritesReorderSnapshotHtmlTitles) replaceMap(htmlTileTitleOverrides, favoritesReorderSnapshotHtmlTitles);
-    syncEmbedStateToMld();
+    const feature = ensureFavoritesCustomCardsFeature();
+    if (feature) feature.cancelReorder();
+    else {
+      if (favoritesReorderSnapshot) replaceList(favorites, favoritesReorderSnapshot);
+      replaceMap(favoriteSizes, favoritesReorderSnapshotSizes || {});
+      if (favoritesReorderSnapshotLayout) replaceList(favoritesLayout, favoritesReorderSnapshotLayout.slice());
+      if (favoritesReorderSnapshotEmbeds) replaceList(embedCards, favoritesReorderSnapshotEmbeds.map((c) => ({ ...c })));
+      if (favoritesReorderSnapshotTimes) replaceList(timeCards, favoritesReorderSnapshotTimes.map((c) => ({ ...c })));
+      if (favoritesReorderSnapshotNotifs) replaceList(notificationCards, favoritesReorderSnapshotNotifs.map((c) => ({ ...c })));
+      if (favoritesReorderSnapshotHtml) replaceList(htmlTiles, favoritesReorderSnapshotHtml.map((tile) => ({ ...tile })));
+      if (favoritesReorderSnapshotHtmlTitles) replaceMap(htmlTileTitleOverrides, favoritesReorderSnapshotHtmlTitles);
+      syncEmbedStateToMld();
+    }
     lastDataSig = "";
     exitFavoritesReorderMode(false);
   }
@@ -1056,6 +1068,11 @@
   }
 
   function disconnectFavEmbedObserver() {
+    const feature = ensureFavoritesCustomCardsFeature();
+    if (feature) {
+      feature.stopEmbedStreams([]);
+      return;
+    }
     if (favEmbedObserver) {
       favEmbedObserver.disconnect();
       favEmbedObserver = null;
@@ -1089,6 +1106,11 @@
   }
 
   function discardEmbedIframe(id) {
+    const feature = ensureFavoritesCustomCardsFeature();
+    if (feature) {
+      feature.discardEmbed(id, [favoritesPersistEl, document.getElementById("favorites-persist")]);
+      return;
+    }
     if (!id) return;
     const roots = [favoritesPersistEl, document.getElementById("favorites-persist")].filter(Boolean);
     for (const root of roots) {
@@ -1103,6 +1125,11 @@
   }
 
   function stopFavEmbedStreams() {
+    const feature = ensureFavoritesCustomCardsFeature();
+    if (feature) {
+      feature.stopEmbedStreams([favoritesPersistEl, currentBody()]);
+      return;
+    }
     disconnectFavEmbedObserver();
     const roots = [favoritesPersistEl, currentBody()].filter(Boolean);
     for (const root of roots) {
@@ -1153,6 +1180,8 @@
   }
 
   function observeFavEmbedCard(card) {
+    const feature = ensureFavoritesCustomCardsFeature();
+    if (feature) return feature.observeEmbedCard(card);
     if (!("IntersectionObserver" in window)) {
       const iframe = card.querySelector(".fav-embed-iframe");
       const url = card.dataset.embedUrl;
@@ -1346,6 +1375,8 @@
   }
 
   async function timeCardsApi(payload) {
+    const feature = ensureFavoritesCustomCardsFeature();
+    if (feature) return feature.mutateCard("time", payload);
     try {
       const r = await fetch(withToken("time-cards"), {
         method: "POST",
@@ -1598,6 +1629,8 @@
   }
 
   async function embedCardsApi(payload) {
+    const feature = ensureFavoritesCustomCardsFeature();
+    if (feature) return feature.mutateCard("embed", payload);
     try {
       const r = await fetch(withToken("embed-cards"), {
         method: "POST",
@@ -3033,6 +3066,70 @@
     closeConfirm(false);
     if (drawerOpen) closeDrawer();
     if (colorSession) closeColorPopup(false);
+  }
+
+  let favoritesCustomCardsFeature = null;
+  async function favoritesCustomCardRequest(path, payload, fallbackMessage) {
+    try {
+      const response = await fetch(withToken(path), {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json().catch(() => ({}));
+      return { ...body, ok: response.ok, error: body?.error || (response.ok ? null : fallbackMessage) };
+    } catch (error) {
+      return { ok: false, error: error?.message || fallbackMessage };
+    }
+  }
+
+  function ensureFavoritesCustomCardsFeature() {
+    if (favoritesCustomCardsFeature || !globalThis.MLDFeatures?.createFavoritesCustomCardsFeature) {
+      return favoritesCustomCardsFeature;
+    }
+    Object.assign(runtime.state, {
+      favorites,
+      favoriteSizes,
+      embedCards,
+      timeCards,
+      notificationCards,
+      htmlTiles,
+      htmlTileTitleOverrides,
+      favoritesLayout,
+    });
+    favoritesCustomCardsFeature = registerFeature("favorites-custom-cards", MLDFeatures.createFavoritesCustomCardsFeature({
+      state: runtime.state,
+      services: {
+        IntersectionObserver: globalThis.IntersectionObserver,
+        isEditing: () => embedEditorOpen || timeEditorOpen || htmlTitleEditorOpen
+          || !!globalThis.__MLD?.embedEditorOpen
+          || !!globalThis.__MLD?.timeEditorOpen
+          || !!globalThis.__MLD?.htmlTitleEditorOpen,
+        isReordering: () => favoritesReorderActive,
+        normalizeDeviceSizes: normalizedFavoriteSizes,
+        saveFavoriteSizes: saveFavoriteSizesCache,
+        api: {
+          "saveLayout": (payload) => favoritesCustomCardRequest(
+            "settings/favorites-layout", payload, "Could not save favorites layout"
+          ),
+          "mutateCard"(kind, payload) {
+            const path = kind === "embed" ? "embed-cards"
+              : kind === "time" ? "time-cards" : "notification-cards";
+            const fallback = kind === "embed" ? "Could not save embed"
+              : kind === "time" ? "Could not save time tile" : "Could not save notifications tile";
+            return favoritesCustomCardRequest(path, payload, fallback);
+          },
+        },
+      },
+      ui: {
+        syncCompatibilityFacade: syncEmbedStateToMld,
+        error: (message) => flash(String(message || "Could not save tile"), true),
+        embedRoots: () => [favoritesPersistEl, currentBody()].filter(Boolean),
+        renderFavoritesCustomCards() {},
+      },
+    }));
+    return favoritesCustomCardsFeature;
   }
 
   let simpleDeviceFeature = null;

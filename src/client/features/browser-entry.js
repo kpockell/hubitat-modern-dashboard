@@ -1,4 +1,5 @@
 import {
+  createCamerasFeature,
   createEnvironmentMediaFeature,
   createFavoritesCustomCardsFeature,
   createLightsColorSnapshotsFeature,
@@ -9,6 +10,7 @@ import {
 
 globalThis.MLDFeatures = {
   ...(globalThis.MLDFeatures || {}),
+  createCamerasFeature,
   createEnvironmentMediaFeature,
   createFavoritesCustomCardsFeature,
   createLightsColorSnapshotsFeature,

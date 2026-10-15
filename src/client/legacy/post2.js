@@ -3105,6 +3105,123 @@
     return environmentMediaFeature;
   }
 
+  let notificationsTriggersFeature = null;
+  async function notificationTriggerRequest(path, method = "GET", body = null) {
+    try {
+      const response = await fetch(withToken(path), {
+        method,
+        cache: "no-store",
+        headers: body == null
+          ? { Accept: "application/json" }
+          : { "Content-Type": "application/json", Accept: "application/json" },
+        body: body == null ? undefined : JSON.stringify(body),
+      });
+      let payload;
+      try {
+        payload = await response.json();
+      } catch {
+        return { ok: false, error: "bad_json" };
+      }
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        return { ok: false, error: "bad_json" };
+      }
+      return { ...payload, ok: response.ok && payload?.ok !== false };
+    } catch (error) {
+      return { ok: false, error: error?.message || "request_failed" };
+    }
+  }
+
+  function ensureNotificationsTriggersFeature() {
+    if (notificationsTriggersFeature || !globalThis.MLDFeatures?.createNotificationsTriggersFeature) {
+      return notificationsTriggersFeature;
+    }
+    runtime.state.hubNotifications = hubNotifications;
+    runtime.state.hubTileNotifications = hubTileNotifications;
+    runtime.state.hubTriggerActions = hubTriggerActions;
+    runtime.state.notificationDeviceIds = notificationDeviceIds;
+    runtime.state.tileNotificationDeviceIds = tileNotificationDeviceIds;
+    runtime.state.triggerSourceIds = triggerSourceIds;
+    runtime.state.playedTriggerToneIds = playedTriggerToneIds;
+    Object.assign(runtime.state.notificationTriggerState, {
+      triggersEnabled, alertsArmed, alertsArmSwitchId,
+    });
+    notificationsTriggersFeature = registerFeature("notifications-triggers", MLDFeatures.createNotificationsTriggersFeature({
+      state: runtime.state,
+      services: {
+        now: Date.now,
+        timers: { setTimeout, clearTimeout },
+        isGateOpen: isDashboardGateOpen,
+        isLocal: isLocalOrigin,
+        api: {
+          "fetchNotifications": () => notificationTriggerRequest("notifications"),
+          "fetchTileNotifications": () => notificationTriggerRequest("tile-notifications"),
+          "fetchTriggerActions": () => notificationTriggerRequest("trigger-actions"),
+          acknowledge(kind, id) {
+            const path = kind === "notifications" ? "notifications/ack"
+              : kind === "tiles" ? "tile-notifications/ack" : "trigger-actions/ack";
+            return notificationTriggerRequest(path, "POST", { id });
+          },
+          "setAlertsArmed"(armed) {
+            return notificationTriggerRequest("alerts/arm", "POST", { armed });
+          },
+        },
+      },
+      ui: {
+        pruneNotificationLocalState(alive) {
+          const snooze = loadNotifSnoozeMap();
+          let changed = false;
+          for (const id of Object.keys(snooze)) {
+            if (!alive.has(id)) { delete snooze[id]; changed = true; }
+          }
+          if (changed) saveNotifSnoozeMap(snooze);
+          if (notifShowingId && !alive.has(notifShowingId)) notifShowingId = null;
+        },
+        notificationsChanged: syncNotificationPopup,
+        tileNotificationsChanged: refreshNotificationTiles,
+        notificationAcknowledged: clearNotifSnooze,
+        captionForTriggerAction: captionTextForTriggerAction,
+        syncArmed(armed) {
+          alertsArmed = armed;
+          postCall("syncAlertsArmUi");
+        },
+        stopTone: stopAlertTone,
+        playTone: playAlertTonePattern,
+        async showCameraOverlay(action, caption) {
+          const ready = await postCall("ensurePost3Loaded");
+          if (ready === false) {
+            syncNotificationPopup();
+            return;
+          }
+          postCall("showTriggerCameraOverlay", action);
+          postCall("setTriggerCameraCaption", caption);
+        },
+        activeCameraId: () => activeCameraOverlayId,
+        teardownCameraOverlay: (reason) => postCall("teardownTriggerCameraOverlay", reason),
+        "hideNotificationPopup": hideNotificationPopup,
+        "syncNotificationPopup": syncNotificationPopup,
+        pauseCameraOverlay: () => postCall("pauseTriggerCameraOverlay"),
+        acknowledgementChanged(kind, _id, pending) {
+          if (kind === "notifications") {
+            notifAckInFlight = pending;
+            if (notifPopup) {
+              notifPopup._close.disabled = pending;
+              notifPopup._ack.disabled = pending;
+            }
+            if (!pending) syncNotificationPopup();
+          } else if (kind === "triggers") triggerAckInFlight = pending;
+        },
+        error(message) { flash(String(message || "Request failed"), true); },
+        renderNotificationsTriggers(_snapshot, reason) {
+          const control = runtime.state.notificationTriggerState;
+          triggersEnabled = !!control.triggersEnabled;
+          alertsArmed = !!control.alertsArmed;
+          alertsArmSwitchId = control.alertsArmSwitchId ?? null;
+        },
+      },
+    }));
+    return notificationsTriggersFeature;
+  }
+
   // Hubitat event application remains feature-specific; socket ownership and
   // lifecycle are delegated to the injected transport controller below.
   function handleWsMessage(ev) {
@@ -3132,27 +3249,30 @@
         const deviceId = Number(m.deviceId);
         const notifAttr = String(m.name || "");
         postCall("applyHtmlTileLiveAttr", deviceId, notifAttr, m.value);
-        if (
-          notificationDeviceIds.has(deviceId) &&
-          (notifAttr === "notificationText" || notifAttr === "deviceNotification" || notifAttr === "lastMessage")
-        ) {
-          scheduleNotificationFetchFromWs();
-          return;
-        }
-        if (
-          tileNotificationDeviceIds.has(deviceId) &&
-          (notifAttr === "notificationText" || notifAttr === "deviceNotification" || notifAttr === "lastMessage")
-        ) {
-          scheduleTileNotificationFetchFromWs();
-          return;
-        }
-        if (alertsArmSwitchId != null && deviceId === alertsArmSwitchId && notifAttr === "switch") {
-          postCall("applyAlertsArmed", String(m.value) === "on");
-          postCall("scheduleTriggerFetchFromWs");
-          return;
-        }
-        if (triggerSourceIds.has(deviceId)) {
-          postCall("scheduleTriggerFetchFromWs");
+        const notificationsFeature = ensureNotificationsTriggersFeature();
+        const notificationRoute = notificationsFeature?.routeHubEvent(m);
+        if (notificationRoute?.handled) return;
+        if (!notificationsFeature) {
+          if (
+            notificationDeviceIds.has(deviceId) &&
+            (notifAttr === "notificationText" || notifAttr === "deviceNotification" || notifAttr === "lastMessage")
+          ) {
+            scheduleNotificationFetchFromWs();
+            return;
+          }
+          if (
+            tileNotificationDeviceIds.has(deviceId) &&
+            (notifAttr === "notificationText" || notifAttr === "deviceNotification" || notifAttr === "lastMessage")
+          ) {
+            scheduleTileNotificationFetchFromWs();
+            return;
+          }
+          if (alertsArmSwitchId != null && deviceId === alertsArmSwitchId && notifAttr === "switch") {
+            postCall("applyAlertsArmed", String(m.value) === "on");
+            postCall("scheduleTriggerFetchFromWs");
+            return;
+          }
+          if (triggerSourceIds.has(deviceId)) postCall("scheduleTriggerFetchFromWs");
         }
         const environmentFeature = ensureEnvironmentMediaFeature();
         const shadeResult = environmentFeature?.applyHubEvent(m, ["shade"]);
@@ -3283,8 +3403,12 @@
       wsReconnectTimer = connection.reconnectTimer;
     },
     pauseEffects() {
-      postCall("stopAlertTone");
-      postCall("pauseTriggerCameraOverlay");
+      const notificationsFeature = ensureNotificationsTriggersFeature();
+      if (notificationsFeature) notificationsFeature.pause();
+      else {
+        postCall("stopAlertTone");
+        postCall("pauseTriggerCameraOverlay");
+      }
     },
     resumeUi: resetUiOnResume,
     defaultPollMs: POLL_DEFAULT,

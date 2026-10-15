@@ -1,3 +1,11 @@
-import { createEnvironmentMediaFeature, createSimpleDeviceFeature } from "./index.mjs";
+import {
+  createEnvironmentMediaFeature,
+  createNotificationsTriggersFeature,
+  createSimpleDeviceFeature,
+} from "./index.mjs";
 
-globalThis.MLDFeatures = { createEnvironmentMediaFeature, createSimpleDeviceFeature };
+globalThis.MLDFeatures = {
+  createEnvironmentMediaFeature,
+  createNotificationsTriggersFeature,
+  createSimpleDeviceFeature,
+};

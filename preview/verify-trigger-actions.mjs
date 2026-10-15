@@ -87,6 +87,11 @@ async function main() {
     const armOff = await postJson("/alerts/arm", { armed: false });
     assert(armOff.json?.ok && armOff.json.alertsArmed === false, "arm off failed");
 
+    const missingArm = await postJson("/alerts/arm", {});
+    assert(missingArm.res.status === 400 && !missingArm.json?.ok, "missing arm value should fail closed");
+    const afterMissingArm = await getJson("/trigger-actions");
+    assert(afterMissingArm.alertsArmed === false, "failed arm request must preserve shunted state");
+
     const pushShunted = await postJson("/trigger-actions/push", {
       cameraId: data.cameras[0].i,
       toneId: "chime",
@@ -97,6 +102,13 @@ async function main() {
     assert(shuntedAction.cameraId != null, "camera should still enqueue when shunted");
     assert(!shuntedAction.toneId, "tone must be omitted when shunted");
     assert(shuntedAction.notificationId, "notification id should be linked");
+
+    const notifAck = await postJson("/notifications/ack", { id: shuntedAction.notificationId });
+    assert(notifAck.json?.ok, "notification ack failed");
+    assert(!(notifAck.json.notifications || []).some((n) => n.id === shuntedAction.notificationId), "notif still present");
+    const afterLinkedNotifAck = await getJson("/trigger-actions");
+    const linkedCamera = (afterLinkedNotifAck.triggerActions || []).find((a) => a.id === shuntedAction.id);
+    assert(linkedCamera && linkedCamera.notificationId == null, "notification ack should retain live camera action without caption link");
 
     const armOn = await postJson("/alerts/arm", { armed: true });
     assert(armOn.json?.alertsArmed === true, "arm on failed");
@@ -130,6 +142,7 @@ async function main() {
 
     const list = await getJson("/trigger-actions");
     assert(list.ok && Array.isArray(list.triggerActions), "GET trigger-actions failed");
+    assert(list.alertsArmed === true && list.triggersEnabled === true, "trigger list preserves arm metadata");
 
     const ack = await postJson("/trigger-actions/ack", { id: armedAction.id });
     assert(ack.json?.ok, "ack failed");
@@ -137,10 +150,6 @@ async function main() {
 
     const ack2 = await postJson("/trigger-actions/ack", { id: armedAction.id });
     assert(ack2.json?.ok, "idempotent ack failed");
-
-    const notifAck = await postJson("/notifications/ack", { id: shuntedAction.notificationId });
-    assert(notifAck.json?.ok, "notification ack failed");
-    assert(!(notifAck.json.notifications || []).some((n) => n.id === shuntedAction.notificationId), "notif still present");
 
     // Text-only trigger actions must leave the queue when their notification is acked.
     const pushText = await postJson("/trigger-actions/push", {

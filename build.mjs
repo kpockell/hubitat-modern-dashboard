@@ -643,6 +643,9 @@ const lifecycleBundle = bundleClientModule(
 const httpBundle = bundleClientModule(
   join(root, "src", "client", "transport", "http-browser-entry.js")
 );
+const applicationShellBundle = bundleClientModule(
+  join(root, "src", "client", "features", "application-shell-browser-entry.js")
+);
 const uiBundle = bundleClientModule(
   join(root, "src", "client", "ui", "browser-entry.js")
 );
@@ -653,7 +656,7 @@ const part1Merged = `${appPre}\n${domainBundle}\n${part1Out}`;
 
 const jsOutputs = [
   ["mld-app.js", minifyJs("mld-app.js", part1Merged)],
-  ["mld-app-core.js", minifyJs("mld-app-core.js", `${httpBundle}\n${partCoreOut}`)],
+  ["mld-app-core.js", minifyJs("mld-app-core.js", `${httpBundle}\n${applicationShellBundle}\n${partCoreOut}`)],
   ["mld-app-post.js", minifyJs("mld-app-post.js", `${uiBundle}\n${part2Out}`)],
   ["mld-app-post2.js", minifyJs("mld-app-post2.js", `${lifecycleBundle}\n${part3Out}`)],
   ["mld-app-post3.js", minifyJs("mld-app-post3.js", `${featureBundle}\n${part4Out}`)],

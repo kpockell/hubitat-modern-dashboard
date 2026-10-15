@@ -8,6 +8,7 @@ import {
 } from "./index.mjs";
 
 globalThis.MLDFeatures = {
+  ...(globalThis.MLDFeatures || {}),
   createEnvironmentMediaFeature,
   createFavoritesCustomCardsFeature,
   createLightsColorSnapshotsFeature,

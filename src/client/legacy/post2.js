@@ -3271,6 +3271,46 @@
     return thermostatsFeature;
   }
 
+  let applicationShellFeature = null;
+  function ensureApplicationShellFeature() {
+    if (applicationShellFeature || !globalThis.MLDFeatures?.createApplicationShellFeature) {
+      return applicationShellFeature;
+    }
+    Object.assign(runtime.state, {
+      dashboardPasswordRequired,
+    });
+    applicationShellFeature = registerFeature("application-shell", MLDFeatures.createApplicationShellFeature({
+      state: runtime.state,
+      services: {
+        timers: { setInterval, clearInterval },
+        document,
+        clearDashSession,
+        loadDashSession,
+        isDashSessionFresh,
+        setupDashSessionActivityRenewal,
+        fetchAuthStatus: async () => {
+          const response = await fetchWithTimeout(withToken("auth/status"), {
+            cache: "no-store",
+            headers: { Accept: "application/json" },
+          });
+          if (!response.ok) throw new Error("HTTP " + response.status);
+          return response.json();
+        },
+        promptDashboardPassword: () => promptDashboardPassword(),
+      },
+      ui: {
+        isGateOpen: isDashboardGateOpen,
+        closeGateAndResolve() {
+          const resolve = gateState?.resolve;
+          closeDashboardGate();
+          resolve?.();
+        },
+      },
+    }));
+    applicationShellFeature.init();
+    return applicationShellFeature;
+  }
+
   let notificationsTriggersFeature = null;
   async function notificationTriggerRequest(path, method = "GET", body = null) {
     try {
@@ -3676,61 +3716,10 @@
 
   // Password gate UI lives here (post2) so mld-app.js stays under Hubitat's 128 KB
   // File Manager limit — putting it in part1 previously left only ~3 KB headroom.
-  let dashGateRecheckTimer = null;
-  const DASH_GATE_RECHECK_MS = 8000;
-
-  function stopDashGateRecheck() {
-    if (dashGateRecheckTimer) {
-      clearInterval(dashGateRecheckTimer);
-      dashGateRecheckTimer = null;
-    }
-  }
-
   function syncDashboardAuthState(required) {
-    if (required) {
-      dashboardPasswordRequired = true;
-      return;
-    }
-    dashboardPasswordRequired = false;
-    clearDashSession();
-    if (isDashboardGateOpen()) {
-      const resolve = gateState?.resolve;
-      stopDashGateRecheck();
-      closeDashboardGate();
-      resolve?.();
-    }
+    dashboardPasswordRequired = !!required;
+    ensureApplicationShellFeature()?.setAuthRequired(dashboardPasswordRequired);
   }
-
-  async function fetchAuthStatus() {
-    const r = await fetchWithTimeout(withToken("auth/status"), {
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    });
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    return r.json();
-  }
-
-  async function recheckDashboardAuthWhileGateOpen() {
-    if (!isDashboardGateOpen()) {
-      stopDashGateRecheck();
-      return;
-    }
-    try {
-      const status = await fetchAuthStatus();
-      if (!status?.required) syncDashboardAuthState(false);
-    } catch {}
-  }
-
-  function startDashGateRecheck() {
-    stopDashGateRecheck();
-    dashGateRecheckTimer = setInterval(recheckDashboardAuthWhileGateOpen, DASH_GATE_RECHECK_MS);
-  }
-
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && isDashboardGateOpen()) {
-      recheckDashboardAuthWhileGateOpen();
-    }
-  });
 
   async function unlockDashboard(password) {
     async function parseUnlockResponse(r) {
@@ -3860,13 +3849,13 @@
     popup.hidden = false;
     popup.classList.remove("shake");
     popup.classList.add("open");
-    startDashGateRecheck();
+    ensureApplicationShellFeature()?.gateOpened();
     if (!alreadyOpen) requestAnimationFrame(() => popup._input.focus());
   }
 
   function closeDashboardGate() {
     if (!gatePopup) return;
-    stopDashGateRecheck();
+    ensureApplicationShellFeature()?.gateClosed();
     gatePopup.classList.remove("open", "shake");
     gatePopup.hidden = true;
     gateState = null;
@@ -3882,38 +3871,7 @@
   }
 
   async function ensureDashboardAccess() {
-    if (ensureDashboardAccessTask) return ensureDashboardAccessTask;
-    ensureDashboardAccessTask = (async () => {
-      loadDashSession();
-      let status;
-      try {
-        status = await fetchAuthStatus();
-      } catch {
-        try {
-          status = await fetchAuthStatus();
-        } catch {
-          return;
-        }
-      }
-      if (!status?.required) {
-        syncDashboardAuthState(false);
-        return;
-      }
-      syncDashboardAuthState(true);
-      if (isDashSessionFresh()) {
-        setupDashSessionActivityRenewal();
-        return;
-      }
-      await promptDashboardPassword();
-      // Unlock writes localStorage via applyDashSessionFromResponse; re-sync before /data.
-      loadDashSession();
-      setupDashSessionActivityRenewal();
-    })();
-    try {
-      await ensureDashboardAccessTask;
-    } finally {
-      ensureDashboardAccessTask = null;
-    }
+    await ensureApplicationShellFeature()?.ensureDashboardAccess();
   }
 
   let post3LoadPromise = null;

@@ -253,6 +253,15 @@ function auditHtmlScriptOrder() {
 
 function auditMissingWithoutPost3() {
   const mld = loadChunks(CHUNKS.slice(0, 4));
+  mld.syncDashboardAuthState?.(true);
+  const earlyFeatureNames = mld.runtime?.features?.names?.() || [];
+  if (!earlyFeatureNames.includes("application-shell")) {
+    fail("application-shell feature is unavailable before post3 loads");
+  } else if (mld.runtime?.state?.dashboardPasswordRequired !== true) {
+    fail("application-shell did not synchronize dashboard password state before post3 loads");
+  } else {
+    ok("application-shell feature and dashboard auth state are available before post3 loads");
+  }
   const present = POST3_VIEW_FNS.filter((fn) => typeof mld[fn] === "function");
   if (present.length) {
     fail(`post3 view functions leaked onto __MLD before post3 load: ${present.join(", ")}`);

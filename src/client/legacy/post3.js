@@ -307,11 +307,11 @@
   }
 
   function normalizeTempSensorForCard(s) {
-    return tempPrimaryCardFromRec(s);
+    return MLDDomain.buildMergedSensorCard(s, null);
   }
 
   function syncDualSensorSources(s, sen, d) {
-    if (sen && d) applySensorPayload(sen, d);
+    if (sen && d) MLDDomain.applySensorPayload(sen, d);
     if (s && d) {
       if (d.temp != null) s.temp = Number(d.temp);
       if (d.bat != null) s.bat = Number(d.bat);
@@ -319,44 +319,18 @@
         s.ex = d.ex.map((e) => ({ k: e.k, v: e.v, u: e.u ?? null }));
       }
     }
-    if (s && sen) syncTempSensorFromSensorEntry(s, sen);
+    if (s && sen) MLDDomain.syncTempSensorFromSensorEntry(s, sen);
   }
 
   function applySensorLiveAttr(deviceId, attrName, value, unit) {
-    const id = Number(deviceId);
-    const s = tempSensors.find((x) => x.i === id);
-    const sen = sensors.find((x) => x.i === id);
-    const nm = String(attrName || "");
-    let changed = false;
-    let climate = false;
-    if (s) {
-      if (nm === "temperature") {
-        const n = Number(value);
-        if (!isNaN(n)) {
-          s.temp = Math.round(n);
-          changed = true;
-          climate = true;
-        }
-      } else if (nm === "battery") {
-        const n = Number(value);
-        if (!isNaN(n)) {
-          s.bat = Math.round(n);
-          changed = true;
-        }
-      } else if (applyTempSensorWsAttr(s, nm, value, unit)) {
-        changed = true;
-      }
-    }
-    if (sen && applySensorWsAttr(sen, nm, value, unit)) {
-      changed = true;
-      if (nm === "temperature") climate = true;
-    }
-    if (s && sen && nm !== "temperature") syncTempSensorFromSensorEntry(s, sen);
-    if (changed && climate) {
+    const result = MLDDomain.applySensorLiveAttr(
+      { tempSensors, sensors }, deviceId, attrName, value, unit
+    );
+    if (result.changed && result.climate) {
       updateClimateWidgets();
       updateRoomMeta();
     }
-    return changed;
+    return result.changed;
   }
 
   function refreshSensorViews() {
@@ -991,7 +965,7 @@
     }
     for (const s of sensors) {
       const tempRec = tempSensors.find((x) => x.i === s.i);
-      byId.set(String(s.i), buildMergedSensorCard(tempRec, s));
+      byId.set(String(s.i), MLDDomain.buildMergedSensorCard(tempRec, s));
     }
     // Valve controls take priority if a valve also exposes a sensor capability.
     for (const v of valves) byId.set(String(v.i), normalizeValveForCard(v));
@@ -1011,7 +985,7 @@
   function sensorTypesWithCounts() {
     const counts = new Map();
     for (const d of mergedSensorList()) {
-      for (const t of sensorCardFilterTypes(d)) {
+      for (const t of MLDDomain.sensorCardFilterTypes(d)) {
         counts.set(t, (counts.get(t) || 0) + 1);
       }
     }
@@ -1020,7 +994,7 @@
 
   function sensorMatchesFilter(dev) {
     if (!sensorTypeFilter.size) return true;
-    const types = sensorCardFilterTypes(dev);
+    const types = MLDDomain.sensorCardFilterTypes(dev);
     for (const t of sensorTypeFilter) {
       if (types.has(t)) return true;
     }
@@ -3932,6 +3906,7 @@
   }
 
   globalThis.__MLD.ensureSimpleDeviceFeature?.();
+  globalThis.__MLD.ensureEnvironmentMediaFeature?.();
   Object.assign(globalThis.__MLD, { applySchedulesFromData, schedulerHasContent, schedulerResponseEpoch, renderSchedulerView });
   globalThis.__MLD.updateQuickNavVisibility?.();
 

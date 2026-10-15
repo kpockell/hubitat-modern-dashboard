@@ -695,7 +695,7 @@
       if (shade) { deviceById.set(id, { type: "shade", dev: shade }); continue; }
       const ts = tempSensors.find(x => x.i === id);
       const sen = sensors.find(x => x.i === id);
-      const sensorDev = buildMergedSensorCard(ts, sen);
+      const sensorDev = MLDDomain.buildMergedSensorCard(ts, sen);
       if (sensorDev) { deviceById.set(id, { type: "sensor", dev: sensorDev }); continue; }
     }
     const embedById = new Map((Array.isArray(embedCards) ? embedCards : []).map((c) => [c.id, c]));
@@ -2356,14 +2356,14 @@
         return;
       }
       if (s && !sen && !hasControlRole) {
-        applyTempSensorPayload(s, d);
+        MLDDomain.applyTempSensorPayload(s, d);
         updateClimateWidgets();
         updateRoomMeta();
         refreshSensorViews();
         return;
       }
       if (sen && !hasControlRole) {
-        applySensorPayload(sen, d);
+        MLDDomain.applySensorPayload(sen, d);
         refreshSensorViews();
         return;
       }
@@ -2459,20 +2459,15 @@
     else if (cmd === "pause") patch = { st: "paused" };
     else if (cmd === "stop") patch = { st: "stopped" };
     else if (cmd === "setVolume") patch = { v: Math.max(0, Math.min(100, Number(val))) };
-    if (patch.st != null || patch.v != null) {
-      setMusicOptimistic(id, patch);
-      if (currentCategory() === "music") renderMusicPopup();
-      else if (currentCategory() === "favorites") postCall("refreshFavoritesPopup");
-    }
+    const feature = postCall("ensureEnvironmentMediaFeature");
+    if (feature) return feature.command("music", id, cmd, val, patch);
+    if (patch.st != null || patch.v != null) setMusicOptimistic(id, patch);
     const result = await sendCmd(id, cmd, val);
-    if (!result.ok) {
-      clearMusicOptimistic(id);
-      reconcileMusic(id);
-      if (currentCategory() === "music") renderMusicPopup();
-      else if (currentCategory() === "favorites") postCall("refreshFavoritesPopup");
-    } else {
-      reconcileMusic(id);
-    }
+    if (!result.ok) clearMusicOptimistic(id);
+    reconcileMusic(id);
+    if (currentCategory() === "music") renderMusicPopup();
+    else if (currentCategory() === "favorites") postCall("refreshFavoritesPopup");
+    return result;
   }
 
   function broadcastMusic(cmd) {
@@ -2602,20 +2597,14 @@
       const spLower = sp.toLowerCase();
       patch = { sp: spLower, s: spLower === "off" ? 0 : 1 };
     }
-    if (patch) {
-      setFanOptimistic(id, patch);
-      updateFanTile(fan);
-      if (currentCategory() === "favorites") postCall("refreshFavoritesPopup");
-    }
+    const feature = postCall("ensureEnvironmentMediaFeature");
+    if (feature) return feature.command("ceilingFans", id, cmd, val, patch);
+    if (patch) setFanOptimistic(id, patch);
     const result = await sendCmd(id, cmd, val);
-    if (!result.ok) {
-      clearFanOptimistic(id);
-      reconcileFan(id);
-      updateFanTile(fan);
-      if (currentCategory() === "favorites") postCall("refreshFavoritesPopup");
-    } else {
-      reconcileFan(id);
-    }
+    if (!result.ok) clearFanOptimistic(id);
+    reconcileFan(id);
+    updateFanTile(fan);
+    if (currentCategory() === "favorites") postCall("refreshFavoritesPopup");
     return result;
   }
 

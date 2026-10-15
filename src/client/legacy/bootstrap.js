@@ -1537,7 +1537,7 @@
   }
 
   function formatRoomTemp(device) {
-    const reading = sensorTemperatureReading(device);
+    const reading = MLDDomain.sensorTemperatureReading(device);
     if (!reading) return "—";
     return Math.round(reading.temp) + tstatTempSuffix(reading.u);
   }
@@ -1849,7 +1849,7 @@
 
   function repopulateSensorByRoom() {
     sensorByRoom.clear();
-    for (const [rid, list] of climateSensorsByRoom(tempSensors, sensors)) {
+    for (const [rid, list] of MLDDomain.climateSensorsByRoom(tempSensors, sensors)) {
       sensorByRoom.set(rid, list);
     }
   }

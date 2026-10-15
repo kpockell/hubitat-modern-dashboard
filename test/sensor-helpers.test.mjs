@@ -5,7 +5,7 @@ import {
   sensorCardFilterTypes,
   sensorTemperatureReading,
   climateSensorsByRoom,
-} from "../preview/merge-sensor-card.mjs";
+} from "../src/client/domain/sensors.mjs";
 import {
   filterSensorExForType,
   sensorLastEventLine,
@@ -58,6 +58,7 @@ test("temperature and environmental records merge into one temperature-primary c
   const lightMerged = buildMergedSensorCard(temp, illuminance);
   assert.equal(lightMerged.t, "temp");
   assert.ok(lightMerged.ex.some((entry) => entry.k === "illuminance" && entry.v === 320));
+  assert.equal(lightMerged.ex.filter((entry) => entry.k === "battery").length, 0);
 });
 
 test("generic multisensors stay generic and gain temperature as a secondary reading", () => {
@@ -81,4 +82,29 @@ test("room climate falls back to multisensors only when no dedicated sensor exis
 
   assert.deepEqual(byRoom.get(42).map((sensor) => sensor.i), [1]);
   assert.deepEqual(byRoom.get(7).map((sensor) => sensor.i), [3]);
+});
+
+test("sensor temperature readings reject missing and nonnumeric values", () => {
+  assert.equal(sensorTemperatureReading({ temp: "" }), null);
+  assert.equal(sensorTemperatureReading({ ex: [{ k: "temperature", v: "unknown" }] }), null);
+  assert.deepEqual(sensorTemperatureReading({ ex: [{ k: "Temperature", v: "69.5", u: "F" }] }), {
+    temp: 69.5,
+    u: "F",
+  });
+});
+
+test("merged sensor extras are deduplicated without mutating their inputs", () => {
+  const temp = { i: 12, temp: 72, ex: [{ k: "battery", v: 90 }] };
+  const sensor = {
+    i: 12,
+    t: "generic",
+    v: "ok",
+    ex: [{ k: "battery", v: 80 }, { k: "pressure", v: 1012 }],
+  };
+  const before = structuredClone({ temp, sensor });
+  const merged = buildMergedSensorCard(temp, sensor);
+
+  assert.equal(merged.ex.filter((entry) => entry.k === "battery").length, 1);
+  assert.equal(merged.bat, 80);
+  assert.deepEqual({ temp, sensor }, before);
 });

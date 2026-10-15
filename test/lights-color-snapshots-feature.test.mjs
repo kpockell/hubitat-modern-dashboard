@@ -104,6 +104,41 @@ test("bulk and snapshot actions delegate to configured APIs", async () => {
   ]);
 });
 
+test("legacy boolean API results are normalized to the feature result contract", async () => {
+  const saved = [];
+  const feature = createLightsColorSnapshotsFeature({
+    state: { devices: [], devMap: new Map(), favDevMap: new Map(), snapshots: {} },
+    services: {
+      api: {
+        async bulkLights() { return true; },
+        async saveSnapshot() { return true; },
+        async restoreSnapshot() { return true; },
+      },
+    },
+    ui: { onSnapshotSaved: (...args) => saved.push(args) },
+  });
+  assert.deepEqual(await feature.bulkLights("off", "house"), { ok: true });
+  assert.deepEqual(await feature.saveSnapshot("house"), { ok: true });
+  assert.deepEqual(await feature.restoreSnapshot("house"), { ok: true });
+  assert.deepEqual(saved, [["house", null]]);
+
+  const rejected = createLightsColorSnapshotsFeature({
+    state: { devices: [], devMap: new Map(), favDevMap: new Map(), snapshots: {} },
+    services: {
+      api: {
+        async bulkLights() { return false; },
+        async saveSnapshot() { return false; },
+        async restoreSnapshot() { return false; },
+      },
+    },
+    ui: { onSnapshotSaved: () => saved.push(["unexpected"]) },
+  });
+  assert.deepEqual(await rejected.bulkLights("on", "house"), { ok: false });
+  assert.deepEqual(await rejected.saveSnapshot("house"), { ok: false });
+  assert.deepEqual(await rejected.restoreSnapshot("house"), { ok: false });
+  assert.deepEqual(saved, [["house", null]]);
+});
+
 test("feature APIs fail closed when handlers are unavailable or throw", async () => {
   const feature = createLightsColorSnapshotsFeature({
     state: { devices: [], devMap: new Map(), favDevMap: new Map(), snapshots: {} },

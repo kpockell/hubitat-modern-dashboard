@@ -20,6 +20,10 @@ function commandError(error, fallback) {
   return { ok: false, error: error?.message || fallback };
 }
 
+function commandResult(result) {
+  return typeof result === "boolean" ? { ok: result } : result;
+}
+
 export function createLightsColorSnapshotsFeature({ state, services, ui }) {
   const render = (reason = "render", kind = "all", payload = null) =>
     ui.renderLights?.(snapshot(state), reason, kind, payload);
@@ -84,7 +88,7 @@ export function createLightsColorSnapshotsFeature({ state, services, ui }) {
       return { ok: false, error: "bulk_lights_api_unavailable" };
     }
     try {
-      return await services.api.bulkLights(command, scope, roomId);
+      return commandResult(await services.api.bulkLights(command, scope, roomId));
     } catch (error) {
       return commandError(error, "Could not control lights");
     }
@@ -95,7 +99,7 @@ export function createLightsColorSnapshotsFeature({ state, services, ui }) {
       return { ok: false, error: "snapshot_save_api_unavailable" };
     }
     try {
-      const result = await services.api.saveSnapshot(scope, roomId);
+      const result = commandResult(await services.api.saveSnapshot(scope, roomId));
       if (result?.ok) ui.onSnapshotSaved?.(scope, roomId);
       return result;
     } catch (error) {
@@ -108,7 +112,7 @@ export function createLightsColorSnapshotsFeature({ state, services, ui }) {
       return { ok: false, error: "snapshot_restore_api_unavailable" };
     }
     try {
-      return await services.api.restoreSnapshot(scope, roomId);
+      return commandResult(await services.api.restoreSnapshot(scope, roomId));
     } catch (error) {
       return commandError(error, "Could not restore state");
     }

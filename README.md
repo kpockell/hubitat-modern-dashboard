@@ -748,8 +748,9 @@ reliably serve binary PNGs from File Manager.
 | All File Manager JS/CSS | **120 KB** | File Manager’s documented ceiling is ~124 KB, but blobs near that size truncate |
 | Cloud-critical JS: `mld-app.js`, `mld-app-post2.js`, `mld-app-post3.js` | **118 KB** | Hubitat Cloud OAuth/MQTT; oversized → blank cloud dashboard / missing icons |
 
-When a chunk approaches its limit, move code across the `__MLD_SPLIT*` markers in
-`src/client/legacy/` (or CSS into `src/styles.css`). Do not raise these caps.
+When a chunk approaches its limit, rebalance code between the explicit legacy entry
+sources in `src/client/legacy/{bootstrap,core,post,post2,post3}.js` (or CSS into
+`src/styles.css`). Do not raise these caps.
 
 ### File Manager assets (exact names)
 

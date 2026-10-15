@@ -1,9 +1,37 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   createNotificationsTriggersFeature,
   normalizeNotifications,
 } from "../src/client/features/notifications-triggers.mjs";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+function notificationTriggerRequestFromSource(fetchImpl) {
+  const source = readFileSync(join(root, "src/client/legacy/post2.js"), "utf8");
+  const marker = "async function notificationTriggerRequest";
+  const start = source.indexOf(marker);
+  assert.notEqual(start, -1, "notificationTriggerRequest missing from legacy source");
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  let end = -1;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    else if (source[index] === "}" && --depth === 0) {
+      end = index + 1;
+      break;
+    }
+  }
+  assert.notEqual(end, -1, "notificationTriggerRequest body is incomplete");
+  const declaration = source.slice(start, end);
+  return Function("fetch", "withToken", `${declaration}; return notificationTriggerRequest;`)(
+    fetchImpl,
+    (path) => path,
+  );
+}
 
 function deferred() {
   let resolve;
@@ -188,6 +216,32 @@ test("fetch guards and request failures fail closed", async () => {
   assert.deepEqual(await failed.feature.fetchNotifications(), { ok: false, error: "offline" });
 });
 
+test("malformed request responses preserve notifications and armed state", async () => {
+  let response = { ok: true, json: async () => { throw new Error("truncated"); } };
+  const request = notificationTriggerRequestFromSource(async () => response);
+  assert.deepEqual(await request("notifications"), { ok: false, error: "bad_json" });
+  response = { ok: true, json: async () => null };
+  assert.deepEqual(await request("alerts/arm", "POST", { armed: false }), {
+    ok: false,
+    error: "bad_json",
+  });
+  response = { ok: true, json: async () => ({}) };
+  assert.deepEqual(await request("notifications"), { ok: true });
+
+  const malformed = { ok: false, error: "bad_json" };
+  const guarded = fixture({
+    api: {
+      fetchNotifications: async () => malformed,
+      setAlertsArmed: async () => malformed,
+    },
+  });
+  guarded.state.hubNotifications.push({ id: "existing", text: "Keep me" });
+  await guarded.feature.fetchNotifications();
+  await guarded.feature.setAlertsArmed(false);
+  assert.deepEqual(guarded.state.hubNotifications, [{ id: "existing", text: "Keep me" }]);
+  assert.equal(guarded.state.notificationTriggerState.alertsArmed, true);
+});
+
 test("acknowledgements apply server payloads, local fallbacks, and errors", async () => {
   const { feature, state, calls } = fixture({
     api: {
@@ -273,4 +327,37 @@ test("Hubitat event routing debounces queues and lifecycle clears effects", () =
   feature.dispose();
   assert.ok(calls.some((call) => call[0] === "pause-camera"));
   assert.equal(calls.at(-1)[0], "stop-tone");
+});
+
+test("trigger-source routing schedules a later notification refresh independently", async () => {
+  let triggerFetches = 0;
+  let notificationFetches = 0;
+  const { feature, scheduled } = fixture({
+    api: {
+      fetchTriggerActions: async () => {
+        triggerFetches += 1;
+        return { ok: true, triggerActions: [] };
+      },
+      fetchNotifications: async () => {
+        notificationFetches += 1;
+        return { ok: true, notifications: [] };
+      },
+    },
+  });
+
+  feature.routeHubEvent({ source: "DEVICE", deviceId: 12, name: "motion", value: "active" });
+  assert.equal(scheduled.size, 1);
+  const [triggerTimerId, runTriggerTimer] = scheduled.entries().next().value;
+  scheduled.delete(triggerTimerId);
+  runTriggerTimer();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(triggerFetches, 1);
+  assert.equal(notificationFetches, 0);
+  assert.equal(scheduled.size, 1);
+
+  const [notificationTimerId, runNotificationTimer] = scheduled.entries().next().value;
+  scheduled.delete(notificationTimerId);
+  runNotificationTimer();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(notificationFetches, 1);
 });

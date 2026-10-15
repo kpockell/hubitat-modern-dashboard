@@ -198,14 +198,19 @@ export function createNotificationsTriggersFeature({ state, services, ui }) {
     return task;
   }
 
-  function scheduleFetch(kind) {
+  function scheduleFetch(kind, afterFetch = null) {
     const previous = fetchTimers.get(kind);
     if (previous) timers.clearTimeout(previous);
     fetchTimers.set(kind, timers.setTimeout(() => {
       fetchTimers.delete(kind);
       void runFetch(kind);
       if (kind === "notifications") void runFetch("tiles");
+      afterFetch?.();
     }, FETCH_DELAY_MS));
+  }
+
+  function scheduleTriggerFetchFromWs() {
+    scheduleFetch("triggers", () => scheduleFetch("notifications"));
   }
 
   function routeHubEvent(event) {
@@ -222,11 +227,11 @@ export function createNotificationsTriggersFeature({ state, services, ui }) {
     }
     if (controls.alertsArmSwitchId != null && id === controls.alertsArmSwitchId && name === "switch") {
       applyArmed(String(event.value) === "on");
-      scheduleFetch("triggers");
+      scheduleTriggerFetchFromWs();
       return { handled: true, scheduled: true };
     }
     if (triggerSourceIds.has(id)) {
-      scheduleFetch("triggers");
+      scheduleTriggerFetchFromWs();
       return { handled: false, scheduled: true };
     }
     return { handled: false, scheduled: false };

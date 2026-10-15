@@ -3116,7 +3116,15 @@
           : { "Content-Type": "application/json", Accept: "application/json" },
         body: body == null ? undefined : JSON.stringify(body),
       });
-      const payload = await response.json().catch(() => ({}));
+      let payload;
+      try {
+        payload = await response.json();
+      } catch {
+        return { ok: false, error: "bad_json" };
+      }
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        return { ok: false, error: "bad_json" };
+      }
       return { ...payload, ok: response.ok && payload?.ok !== false };
     } catch (error) {
       return { ok: false, error: error?.message || "request_failed" };

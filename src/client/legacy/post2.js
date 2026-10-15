@@ -2567,7 +2567,11 @@
       clickFallback: true,
       onTap: () => { void tapAllOn(); },
       onCommit: () => {
-        snapshotRestoreApi("house").then((ok) => {
+        const feature = ensureLightsColorSnapshotsFeature();
+        const restore = feature
+          ? () => feature.restoreSnapshot("house").then((result) => !!result?.ok)
+          : () => snapshotRestoreApi("house");
+        restore().then((ok) => {
           if (ok) flash("Restoring home…");
         });
       },
@@ -2582,10 +2586,12 @@
       clickFallback: true,
       onTap: () => { void tapAllOff(); },
       onCommit: () => {
-        snapshotSaveApi("house").then((ok) => {
+        const feature = ensureLightsColorSnapshotsFeature();
+        const save = feature
+          ? () => feature.saveSnapshot("house").then((result) => !!result?.ok)
+          : () => snapshotSaveApi("house");
+        save().then((ok) => {
           if (!ok) return;
-          snapshots[snapshotHouseKey()] = { ts: Date.now(), count: devices.length };
-          updateRoomSnapshotUi();
           flash("Home saved");
         });
       },
@@ -3202,6 +3208,45 @@
     return environmentMediaFeature;
   }
 
+  let lightsColorSnapshotsFeature = null;
+  function ensureLightsColorSnapshotsFeature() {
+    if (lightsColorSnapshotsFeature || !globalThis.MLDFeatures?.createLightsColorSnapshotsFeature) {
+      return lightsColorSnapshotsFeature;
+    }
+    Object.assign(runtime.state, {
+      devices,
+      devMap,
+      favDevMap,
+      snapshots,
+    });
+    lightsColorSnapshotsFeature = registerFeature("lights-color-snapshots", MLDFeatures.createLightsColorSnapshotsFeature({
+      state: runtime.state,
+      services: {
+        ...runtime.services,
+        api: {
+          bulkLights: (cmd, scope, roomId) => bulkLightsApi(cmd, scope, roomId),
+          saveSnapshot: (scope, roomId) => snapshotSaveApi(scope, roomId),
+          restoreSnapshot: (scope, roomId) => snapshotRestoreApi(scope, roomId),
+        },
+      },
+      ui: {
+        clearSwitchOptimistic,
+        isDragging: (rec) => !!rec?.el?.classList?.contains("dragging"),
+        activeColorSessionId: () => colorSession?.id ?? null,
+        onSnapshotSaved(scope) {
+          if (scope !== "house") return;
+          snapshots[snapshotHouseKey()] = { ts: Date.now(), count: devices.length };
+          updateRoomSnapshotUi();
+        },
+        renderLights(_snapshot, _reason, _kind, payload) {
+          updateStates();
+          if (payload?.dev?.d && currentCategory() === "favorites") postCall("refreshFavoritesPopup");
+        },
+      },
+    }));
+    return lightsColorSnapshotsFeature;
+  }
+
   let notificationsTriggersFeature = null;
   async function notificationTriggerRequest(path, method = "GET", body = null) {
     try {
@@ -3383,6 +3428,8 @@
             if (shadeName !== "switch" && shadeName !== "level") return;
           }
         }
+        const lightsFeature = ensureLightsColorSnapshotsFeature();
+        if (lightsFeature?.applyHubEvent(m).handled) return;
         const rec = devMap.get(deviceId) || favDevMap.get(deviceId);
         if (rec && !rec.isOutlet) {
           const dev = devices.find((x) => x.i === Number(m.deviceId));

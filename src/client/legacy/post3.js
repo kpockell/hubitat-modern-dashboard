@@ -3931,6 +3931,7 @@
     }
   }
 
+  globalThis.__MLD.ensureSimpleDeviceFeature?.();
   Object.assign(globalThis.__MLD, { applySchedulesFromData, schedulerHasContent, schedulerResponseEpoch, renderSchedulerView });
   globalThis.__MLD.updateQuickNavVisibility?.();
 
